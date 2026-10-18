@@ -13,10 +13,11 @@ payments → orders, `pricing_config` → the flagship product, `lessons.video_u
 
 `docs/analysis/03-architecture.md` → Data model and “Taking over production” (backfill list);
 `docs/analysis/05-discounts.md` → Target model and “Migration from the current table”;
-`src/lib/server/db/schema/*` (PHASE-03); Better Auth plugin schemas in
-`node_modules/better-auth/dist/plugins/two-factor/` and the rate-limit table definition
-(`node_modules/better-auth/dist/**/rate-limit*`), or `npx @better-auth/cli@latest generate`
-output if it can run without a database.
+`src/lib/server/db/schema/*` (PHASE-03); Better Auth plugin schemas in the **installed**
+package: `node_modules/better-auth/dist/plugins/two-factor/` and the rate-limit table definition
+(`node_modules/better-auth/dist/**/rate-limit*`). The `@better-auth/cli` is several minor
+versions behind `better-auth`; use its `generate` output only as a cross-check, never as the
+source of truth.
 
 ## Deliverables
 

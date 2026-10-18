@@ -12,8 +12,8 @@ Every file under `legacy/src/routes/` for `+page.svelte` of `/`, `about`, `faq`,
 `blog/[slug]`, `testimonials`, `fabric-library`, `contact`, `legal/*`, and
 `legacy/src/routes/+page.server.ts`; every component under `legacy/src/lib/components/marketing/`;
 `legacy/src/lib/data/fabric-library`-related data (`legacy/seed/fabric-library.json`,
-`legacy/src/lib/data/social-links.ts`); `legacy/static/` layout (images already vendored to
-`static/`).
+`legacy/src/lib/data/social-links.ts`); the vendored images under `static/` at the repository
+root (there is no `legacy/static/`; the legacy `static/` tree was copied there as-is).
 
 ## Deliverables
 

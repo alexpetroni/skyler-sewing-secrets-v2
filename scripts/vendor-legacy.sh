@@ -26,6 +26,8 @@ mkdir -p "$HERE/legacy" "$HERE/static"
 # constitution — exactly as committed on the branch (no node_modules, no .env).
 git -C "$SRC" archive "$BRANCH" \
   src seed drizzle supabase tailwind.config.js postcss.config.js .env.example \
+  package.json drizzle.config.ts vite.config.ts svelte.config.js tsconfig.json \
+  vercel.json .prettierrc .npmrc .nvmrc \
   CLAUDE.md ARCHITECTURE.md DECISIONS.md docs/phase-runner/ENTRY.md \
   | tar -x -C "$HERE/legacy"
 

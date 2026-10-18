@@ -258,6 +258,15 @@ Optional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (Google sign-in off when ab
   skips signature checks and the real one never does.
 - The reviewer checks `env -i PATH="$PATH" HOME="$HOME" npm run build`; a module that reads
   env at import time breaks it.
+- TypeScript stays on **6.x**. `typescript@latest` is 7.x, which `svelte-check` and
+  `@sveltejs/kit` 3 do not accept; never run `npm i -D typescript@latest`.
+- `@better-auth/cli` lags `better-auth` by several minor versions. For plugin table shapes
+  (`twoFactor`, `rateLimit`, `emailOTP`) read the installed package under
+  `node_modules/better-auth/dist/plugins/**` first and treat the CLI's `generate` output as a
+  cross-check only.
+- The `context7` MCP server in `.mcp.json` serves versioned docs for Better Auth, Drizzle,
+  Stripe, superforms and valibot; the `svelte` server covers Svelte and SvelteKit 3. Ask them
+  before reading `node_modules` by hand.
 
 If a Definition of Done item is genuinely unreachable, deliver every other item, commit, and
 report `blocked` with what is missing. Never fake green, never soften the DoD.
