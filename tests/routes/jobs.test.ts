@@ -1,3 +1,4 @@
+import type { RequestEvent } from '@sveltejs/kit';
 import { eq, sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema } from '../../src/lib/server/db/index.ts';
@@ -12,7 +13,8 @@ vi.mock('$app/server', () => ({ getRequestEvent: () => null }));
 
 const { orders, media_assets } = schema;
 
-type Handler = typeof expireOrders | typeof syncMedia;
+/** Both endpoints, under one signature so a test can take either. */
+type Handler = (event: RequestEvent) => Promise<Response>;
 
 describe('/api/jobs/*', () => {
 	const { db } = useTestDb();
@@ -29,13 +31,13 @@ describe('/api/jobs/*', () => {
 			headers: authorization ? { authorization } : {},
 			locals: { services: seeded.services, requestId: 'req-1' }
 		});
-		const response = await handler(event as unknown as Parameters<Handler>[0]);
+		const response = await handler(event as unknown as RequestEvent);
 		return { status: response.status, body: (await response.json()) as Record<string, unknown> };
 	}
 
 	const cases: Array<[string, Handler, string]> = [
-		['expire-orders', expireOrders, '/api/jobs/expire-orders'],
-		['sync-media', syncMedia, '/api/jobs/sync-media']
+		['expire-orders', expireOrders as unknown as Handler, '/api/jobs/expire-orders'],
+		['sync-media', syncMedia as unknown as Handler, '/api/jobs/sync-media']
 	];
 
 	it.each(cases)('%s answers 401 without the cron secret', async (_name, handler, path) => {
@@ -70,7 +72,11 @@ describe('/api/jobs/*', () => {
 			.set({ expires_at: sql`now() - interval '1 minute'` })
 			.where(eq(orders.id, stale.id));
 
-		const result = await get(expireOrders, '/api/jobs/expire-orders', `Bearer ${TEST_CRON_SECRET}`);
+		const result = await get(
+			expireOrders as unknown as Handler,
+			'/api/jobs/expire-orders',
+			`Bearer ${TEST_CRON_SECRET}`
+		);
 
 		expect(result).toEqual({ status: 200, body: { expired: 1 } });
 		const statuses = Object.fromEntries(
@@ -90,7 +96,11 @@ describe('/api/jobs/*', () => {
 		videoHost.finishEncoding(stale.asset.video_id);
 		videoHost.finishEncoding(fresh.asset.video_id);
 
-		const result = await get(syncMedia, '/api/jobs/sync-media', `Bearer ${TEST_CRON_SECRET}`);
+		const result = await get(
+			syncMedia as unknown as Handler,
+			'/api/jobs/sync-media',
+			`Bearer ${TEST_CRON_SECRET}`
+		);
 
 		expect(result).toEqual({ status: 200, body: { synced: 1, failed: 0 } });
 		const [staleRow] = await db()
