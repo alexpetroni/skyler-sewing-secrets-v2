@@ -1,54 +1,39 @@
-# sv
+# Skyler's Sewing Secrets v2
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+The rebuild of [skylersewingsecrets.com](https://skylersewingsecrets.com) as a catalogue: the
+flagship sewing course (lifetime, all-access), admin-defined bundles of videos and standalone
+videos, bought through a cart and Stripe Checkout with per-product discount codes. Members of
+the previous site keep their logins and everything they own. Videos are hosted on Bunny Stream,
+email goes through Resend, and the app deploys to Vercel on SvelteKit 3.
 
-## Creating a project
+The previous site is vendored read-only under `legacy/` for reference. The analysis behind this
+rebuild, including the architecture and data model, is in [`docs/analysis/README.md`](docs/analysis/README.md).
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Local setup
 
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-npx sv@1.1.1 create --template minimal --types ts --no-install .
-```
-
-## Adding features
-
-Add features to your project with `sv add`:
+Requires Node 24 (see `.nvmrc`) and npm.
 
 ```sh
-npx sv add
+npm ci
+cp .env.example .env   # fill in the values you have; see the comments in the file
 ```
 
-For example, to add Tailwind CSS:
+For local development without a Postgres server, point the app at an embedded PGlite database
+(available once the database baseline lands in PHASE-03):
 
 ```sh
-npx sv add tailwindcss
+DATABASE_DRIVER=pglite DATABASE_URL=pglite://./.pglite npm run dev
 ```
 
-## Developing
+## Verification
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+The four gate commands, run from the project root, must all pass before a change is merged:
 
 ```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+npm run check   # svelte-check with --fail-on-warnings
+npm run lint    # prettier --check . && eslint .
+npm run build   # production build; also passes with no environment variables set
+npm test        # vitest run
 ```
 
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
+CI runs the same four commands on every push and pull request.
