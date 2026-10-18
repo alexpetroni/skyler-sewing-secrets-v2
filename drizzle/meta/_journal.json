@@ -15,6 +15,13 @@
       "when": 1783257091816,
       "tag": "0001_triggers_functions_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792341585721,
+      "tag": "0002_v2_catalogue",
+      "breakpoints": true
     }
   ]
 }
