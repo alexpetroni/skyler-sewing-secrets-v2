@@ -1,5 +1,9 @@
 import { createAdminService } from '../../src/lib/server/modules/admin/index.ts';
-import { createAuth, createAuthService } from '../../src/lib/server/modules/auth/index.ts';
+import {
+	createAuth,
+	createAuthService,
+	createTwoFactorService
+} from '../../src/lib/server/modules/auth/index.ts';
 import type { Db } from '../../src/lib/server/db/index.ts';
 import { createFakeLogger, type LogEntry } from '../../src/lib/server/platform/fakes/logger.ts';
 import { createFakeMailer, type FakeMailer } from '../../src/lib/server/platform/fakes/mailer.ts';
@@ -114,6 +118,7 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		db,
 		auth,
 		users,
+		twoFactor: createTwoFactorService({ auth }),
 		logger,
 		payments,
 		videoHost,

@@ -3,8 +3,10 @@ import { createAdminService, type AdminService } from '#lib/server/modules/admin
 import {
 	createAuth,
 	createAuthService,
+	createTwoFactorService,
 	type Auth,
-	type AuthService
+	type AuthService,
+	type TwoFactorService
 } from '#lib/server/modules/auth/index.ts';
 import { createCatalogService, type CatalogService } from '#lib/server/modules/catalog/index.ts';
 import {
@@ -51,6 +53,8 @@ export interface Services {
 	db: Db;
 	auth: Auth;
 	users: AuthService;
+	/** Admin TOTP setup and the second sign-in step. */
+	twoFactor: TwoFactorService;
 	logger: Logger;
 	payments: PaymentGateway;
 	videoHost: VideoHost;
@@ -141,6 +145,7 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		db,
 		auth,
 		users,
+		twoFactor: createTwoFactorService({ auth }),
 		logger,
 		payments,
 		videoHost,

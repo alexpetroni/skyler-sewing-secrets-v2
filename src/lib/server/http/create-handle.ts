@@ -27,6 +27,15 @@ function isAdminPath(pathname: string): boolean {
 	return pathname === '/admin' || pathname.startsWith('/admin/');
 }
 
+/** Where an admin turns two-factor authentication on. */
+export const TWO_FACTOR_SETUP_PATH = '/admin/security';
+export const TWO_FACTOR_REQUIRED_MESSAGE =
+	'Two-factor authentication is required for admin accounts.';
+
+function isTwoFactorSetupPath(pathname: string): boolean {
+	return pathname === TWO_FACTOR_SETUP_PATH || pathname.startsWith(`${TWO_FACTOR_SETUP_PATH}/`);
+}
+
 function withMaintenanceHeaders(response: Response): Response {
 	response.headers.set('Retry-After', '300');
 	response.headers.set('Cache-Control', 'no-store');
@@ -127,8 +136,17 @@ export function createHandle(options: CreateHandleOptions): Handle {
 
 	// (d) Admin gate. SvelteKit runs form actions before layout loads, so the
 	// layout guard alone does not protect POSTs: every /admin request is gated here.
+	// An admin without two-factor authentication may only reach the page that
+	// sets it up (and /auth/*, which is not under /admin): reads are sent
+	// there, writes get a 403.
 	const adminGate: Handle = ({ event, resolve }) => {
-		if (isAdminPath(event.url.pathname)) requireAdmin(event);
+		if (isAdminPath(event.url.pathname)) {
+			const { user } = requireAdmin(event);
+			if (user.twoFactorEnabled !== true && !isTwoFactorSetupPath(event.url.pathname)) {
+				if (isReadMethod(event.request)) redirect(303, `${TWO_FACTOR_SETUP_PATH}?required=1`);
+				error(403, TWO_FACTOR_REQUIRED_MESSAGE);
+			}
+		}
 		return resolve(event);
 	};
 

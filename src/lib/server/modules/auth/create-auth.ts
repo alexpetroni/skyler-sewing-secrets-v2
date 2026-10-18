@@ -20,6 +20,9 @@ export interface CreateAuthOptions {
 /** bcrypt cost used by Supabase Auth, whose hashes were migrated unchanged. */
 const BCRYPT_COST = 10;
 
+/** The account label authenticator apps show for admin TOTP secrets. */
+export const TOTP_ISSUER = "Skyler's Sewing Secrets";
+
 export function createAuth(options: CreateAuthOptions) {
 	const { db, secret, baseURL, google, sendPasswordReset } = options;
 
@@ -95,7 +98,7 @@ export function createAuth(options: CreateAuthOptions) {
 				}
 			}
 		},
-		plugins: [twoFactor(), sveltekitCookies(getRequestEvent)]
+		plugins: [twoFactor({ issuer: TOTP_ISSUER }), sveltekitCookies(getRequestEvent)]
 	});
 }
 

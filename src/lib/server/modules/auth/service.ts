@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
-import { eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { schema, withTx, type Db, type Tx } from '#lib/server/db/index.ts';
+import { DomainError } from '#lib/server/modules/errors.ts';
 
 const { users, accounts, profiles, sessions, audit_log } = schema;
 
@@ -36,8 +37,11 @@ export interface AuthService {
 	/** Refuses admins; sets the flags, ends every session and records the change. */
 	suspend(userId: string, reason: string, actorId: string): Promise<Profile>;
 	unsuspend(userId: string, actorId: string): Promise<Profile>;
+	/** Refuses unless the actor has two-factor authentication on (`TWO_FACTOR_REQUIRED`). */
 	setAdmin(userId: string, isAdmin: boolean, actorId: string): Promise<Profile>;
 	revokeAllSessions(userId: string): Promise<void>;
+	/** Keeps the `keep` newest sessions of the user and deletes the rest. */
+	trimSessions(userId: string, keep: number): Promise<number>;
 }
 
 /** bcrypt cost used by Supabase Auth, whose hashes were migrated unchanged. */
@@ -202,6 +206,17 @@ export function createAuthService({ db }: { db: Db }): AuthService {
 
 		setAdmin(userId, isAdmin, actorId) {
 			return withTx(db, async (tx) => {
+				const [actor] = await tx
+					.select({ twoFactorEnabled: users.twoFactorEnabled })
+					.from(users)
+					.where(eq(users.id, actorId))
+					.limit(1);
+				if (!actor?.twoFactorEnabled) {
+					throw new DomainError(
+						'TWO_FACTOR_REQUIRED',
+						'Turn on two-factor authentication for your own account before changing admin access'
+					);
+				}
 				const before = await requireProfile(tx, userId);
 				const [after] = await tx
 					.update(profiles)
@@ -221,6 +236,20 @@ export function createAuthService({ db }: { db: Db }): AuthService {
 
 		async revokeAllSessions(userId) {
 			await db.delete(sessions).where(eq(sessions.userId, userId));
+		},
+
+		async trimSessions(userId, keep) {
+			const kept = db
+				.select({ id: sessions.id })
+				.from(sessions)
+				.where(eq(sessions.userId, userId))
+				.orderBy(desc(sessions.createdAt), desc(sessions.id))
+				.limit(keep);
+			const removed = await db
+				.delete(sessions)
+				.where(sql`${sessions.userId} = ${userId} AND ${sessions.id} NOT IN (${kept})`)
+				.returning({ id: sessions.id });
+			return removed.length;
 		}
 	};
 }

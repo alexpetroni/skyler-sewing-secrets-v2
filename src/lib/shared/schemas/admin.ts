@@ -26,6 +26,19 @@ const reasonField = v.pipe(
 /** Actions that carry no input beyond the URL (`unsuspend`, `sendReset`, …). */
 export const emptyActionSchema = v.object({});
 
+const passwordField = v.pipe(v.optional(v.string(), ''), v.nonEmpty('Password is required'));
+/** A TOTP or backup code; the server decides which, so only emptiness is checked here. */
+const codeField = v.pipe(
+	v.optional(v.string(), ''),
+	v.trim(),
+	v.nonEmpty('Enter the code'),
+	v.maxLength(32, 'That is not a valid code')
+);
+
+export const twoFactorPasswordSchema = v.object({ password: passwordField });
+export const twoFactorCodeSchema = v.object({ code: codeField });
+export const twoFactorDisableSchema = v.object({ password: passwordField, code: codeField });
+
 export const suspendSchema = v.object({ reason: reasonField });
 
 export const grantProductSchema = v.object({

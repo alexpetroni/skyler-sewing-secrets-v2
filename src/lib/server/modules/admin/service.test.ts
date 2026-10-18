@@ -19,7 +19,8 @@ const {
 	profiles,
 	promo_codes,
 	promo_redemptions,
-	sessions
+	sessions,
+	users
 } = schema;
 
 const NOW = new Date('2026-10-18T12:00:00.000Z');
@@ -38,6 +39,7 @@ describe('createAdminService', () => {
 			fullName: 'Owner'
 		});
 		await db().update(profiles).set({ is_admin: true }).where(eq(profiles.id, adminId));
+		await db().update(users).set({ twoFactorEnabled: true }).where(eq(users.id, adminId));
 	});
 
 	const admin = () => seeded.services.admin;

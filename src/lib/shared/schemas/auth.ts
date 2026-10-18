@@ -19,6 +19,18 @@ export type SignInInput = v.InferOutput<typeof signInSchema>;
 
 export const forgotPasswordSchema = v.object({ email: emailField });
 
+/** The second sign-in step: a code from the authenticator app or a backup code. */
+export const twoFactorSignInSchema = v.object({
+	code: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.nonEmpty('Enter the code'),
+		v.maxLength(32, 'That is not a valid code')
+	),
+	method: v.optional(v.picklist(['totp', 'backup']), 'totp'),
+	redirectTo: v.optional(v.string(), '')
+});
+
 export const resetPasswordSchema = v.pipe(
 	v.object({
 		password: v.pipe(

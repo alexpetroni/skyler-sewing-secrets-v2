@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { useTestDb } from '../../../../../tests/helpers/db.ts';
+import { DomainError } from '#lib/server/modules/errors.ts';
 import { schema } from '#lib/server/db/index.ts';
 import { createAuthService } from './service.ts';
 
@@ -17,6 +18,8 @@ describe('createAuthService', () => {
 			fullName: 'Actor'
 		});
 		await db().update(profiles).set({ is_admin: true }).where(eq(profiles.id, actorId));
+		// `setAdmin` requires the actor to have two-factor authentication on.
+		await db().update(users).set({ twoFactorEnabled: true }).where(eq(users.id, actorId));
 		return actorId;
 	}
 
@@ -194,6 +197,23 @@ describe('createAuthService', () => {
 			const actions = (await db().select().from(audit_log)).map((entry) => entry.action);
 			expect(actions).toEqual(['user.suspend', 'user.unsuspend']);
 		});
+	});
+
+	it('setAdmin refuses an actor without two-factor authentication and changes nothing', async () => {
+		const actorId = await createActor();
+		await db().update(users).set({ twoFactorEnabled: false }).where(eq(users.id, actorId));
+		const userId = await service().createCredentialUser({
+			email: 'promote@example.com',
+			password: 'x'
+		});
+
+		const refusal = await service()
+			.setAdmin(userId, true, actorId)
+			.catch((err: unknown) => err);
+		expect(refusal).toBeInstanceOf(DomainError);
+		expect(refusal).toMatchObject({ code: 'TWO_FACTOR_REQUIRED' });
+		expect((await service().getProfile(userId))?.is_admin).toBe(false);
+		expect(await db().select().from(audit_log)).toEqual([]);
 	});
 
 	it('setAdmin updates the flag and writes audit_log with before/after', async () => {

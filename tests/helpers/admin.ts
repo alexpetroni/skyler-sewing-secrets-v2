@@ -11,7 +11,11 @@ export interface FormState {
 	errors: Record<string, string[] | undefined> & { _errors?: string[] };
 }
 
-/** An active admin account (the hook would also require 2FA; route tests start past it). */
+/**
+ * An active admin account with two-factor authentication flagged on, as the
+ * hook and `setAdmin` require. Route tests start past the actual TOTP setup
+ * (tests/routes/admin-security.test.ts covers it).
+ */
 export async function createAdmin(
 	services: Services,
 	email = 'owner@example.com'
@@ -21,7 +25,16 @@ export async function createAdmin(
 		.update(schema.profiles)
 		.set({ is_admin: true })
 		.where(eq(schema.profiles.id, id));
+	await markTwoFactorEnabled(services, id);
 	return id;
+}
+
+/** Sets `users.twoFactorEnabled` without a secret: enough for the gates that read the flag. */
+export async function markTwoFactorEnabled(services: Services, userId: string): Promise<void> {
+	await services.db
+		.update(schema.users)
+		.set({ twoFactorEnabled: true })
+		.where(eq(schema.users.id, userId));
 }
 
 /** The status and superforms state of a `fail()` an action returned. */

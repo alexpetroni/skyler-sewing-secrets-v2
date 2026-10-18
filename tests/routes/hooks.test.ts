@@ -10,7 +10,7 @@ import { createTestServices, signInCookie, type TestServices } from '../helpers/
 
 vi.mock('$app/server', () => ({ getRequestEvent: () => null }));
 
-const { profiles, site_settings } = schema;
+const { profiles, site_settings, users } = schema;
 
 const PASSWORD = 'a-good-password';
 
@@ -28,6 +28,7 @@ describe('createHandle', () => {
 	let services: TestServices;
 	let handle: Handle;
 	let memberId: string;
+	let adminId: string;
 	let memberCookie: string;
 	let adminCookie: string;
 	let suspendedAdminCookie: string;
@@ -41,7 +42,7 @@ describe('createHandle', () => {
 			password: PASSWORD,
 			fullName: 'Member'
 		});
-		const adminId = await services.users.createCredentialUser({
+		adminId = await services.users.createCredentialUser({
 			email: 'admin@example.com',
 			password: PASSWORD,
 			fullName: 'Admin'
@@ -50,9 +51,9 @@ describe('createHandle', () => {
 			email: 'suspended-admin@example.com',
 			password: PASSWORD
 		});
-		await services.users.setAdmin(adminId, true, adminId);
-		// A legacy row can be an admin and suspended at once; the service refuses
-		// to create that state, so the test writes it directly.
+		// The flags are written directly: `setAdmin` needs an actor with
+		// two-factor on, and a legacy row can be an admin and suspended at once.
+		await db().update(profiles).set({ is_admin: true }).where(eq(profiles.id, adminId));
 		await db()
 			.update(profiles)
 			.set({ is_admin: true, is_suspended: true })
@@ -61,6 +62,10 @@ describe('createHandle', () => {
 		memberCookie = await signInCookie(services, 'member@example.com', PASSWORD);
 		adminCookie = await signInCookie(services, 'admin@example.com', PASSWORD);
 		suspendedAdminCookie = await signInCookie(services, 'suspended-admin@example.com', PASSWORD);
+		// Flagged after signing in (a two-factor account is parked at the code
+		// step by Better Auth); the session reads the flag fresh on every request.
+		// The `an admin without two-factor` tests take the flag away again.
+		await db().update(users).set({ twoFactorEnabled: true }).where(eq(users.id, adminId));
 	});
 
 	/** The flagship product; whoever owns it has all access. */
@@ -278,12 +283,57 @@ describe('createHandle', () => {
 			expect(post.status).toBe(403);
 		});
 
-		it('lets an active admin through', async () => {
+		it('lets an active admin with two-factor authentication through', async () => {
 			const result = await call({ path: '/admin', cookie: adminCookie });
 
 			expect(result.status).toBe(200);
 			expect(result.resolved).toBe(true);
+			expect(result.event.locals.user?.twoFactorEnabled).toBe(true);
 			expectSecurityHeaders(result);
+		});
+
+		describe('an admin without two-factor authentication', () => {
+			beforeEach(async () => {
+				await db().update(users).set({ twoFactorEnabled: false }).where(eq(users.id, adminId));
+			});
+
+			it('is sent to /admin/security from every other admin page', async () => {
+				for (const path of ['/admin', '/admin/users', '/admin/orders/abc']) {
+					const result = await call({ path, cookie: adminCookie });
+					expect(result.status).toBe(303);
+					expect(result.location).toBe('/admin/security?required=1');
+					expect(result.resolved).toBe(false);
+					expectSecurityHeaders(result);
+				}
+			});
+
+			it('gets a 403 for admin writes', async () => {
+				const result = await call({
+					method: 'POST',
+					path: '/admin/users/abc',
+					cookie: adminCookie
+				});
+				expect(result.status).toBe(403);
+				expect(JSON.parse(result.body)).toEqual({
+					message: 'Two-factor authentication is required for admin accounts.'
+				});
+				expect(result.resolved).toBe(false);
+			});
+
+			it('can load and post to /admin/security and still use /auth/*', async () => {
+				for (const path of ['/admin/security', '/admin/security?required=1', '/auth/sign-out']) {
+					const result = await call({ path, cookie: adminCookie });
+					expect(result.status).toBe(200);
+					expect(result.resolved).toBe(true);
+				}
+				const post = await call({
+					method: 'POST',
+					path: '/admin/security?/enable',
+					cookie: adminCookie
+				});
+				expect(post.status).toBe(200);
+				expect(post.resolved).toBe(true);
+			});
 		});
 	});
 

@@ -1,4 +1,16 @@
-export { createAuth, type Auth, type AuthSession, type AuthUser } from './create-auth.ts';
+export {
+	createAuth,
+	TOTP_ISSUER,
+	type Auth,
+	type AuthSession,
+	type AuthUser
+} from './create-auth.ts';
+export {
+	createTwoFactorService,
+	type TwoFactorMethod,
+	type TwoFactorService,
+	type TwoFactorSetup
+} from './two-factor.ts';
 export type { CreateAuthOptions } from './create-auth.ts';
 export {
 	createAuthService,

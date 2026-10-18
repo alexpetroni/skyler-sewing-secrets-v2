@@ -1,4 +1,4 @@
-import { fail, redirect } from '@sveltejs/kit';
+import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import * as v from 'valibot';
 import { readForm } from '#lib/server/http/forms.ts';
 import { safeRelativeTarget } from '#lib/server/http/redirects.ts';
@@ -7,6 +7,14 @@ import { fieldErrors, signInSchema } from '#lib/shared/schemas/auth.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const DEFAULT_TARGET = '/library';
+
+function isTwoFactorRedirect(result: unknown): boolean {
+	return (
+		typeof result === 'object' &&
+		result !== null &&
+		(result as { twoFactorRedirect?: unknown }).twoFactorRedirect === true
+	);
+}
 
 export const load: PageServerLoad = async ({ locals, url, request }) => {
 	const { auth, logger } = locals.services;
@@ -51,14 +59,21 @@ export const actions: Actions = {
 		// The session cookie is set through the sveltekitCookies plugin.
 		let userId: string;
 		try {
-			const result = await locals.services.auth.api.signInEmail({
+			const result: unknown = await locals.services.auth.api.signInEmail({
 				body: { email, password },
 				headers: request.headers
 			});
-			userId = result.user.id;
-		} catch {
+			// Two-factor accounts get no session yet: Better Auth parked the
+			// sign-in behind its two-factor cookie and the code completes it.
+			if (isTwoFactorRedirect(result)) {
+				redirect(303, `/auth/two-factor?redirectTo=${encodeURIComponent(redirectTo)}`);
+			}
+			userId = (result as { user: { id: string } }).user.id;
+		} catch (err) {
+			if (isRedirect(err)) throw err;
 			return fail(400, { email, error: 'Invalid email or password' });
 		}
+		await locals.services.users.trimSessions(userId, 5);
 
 		// A suspended admin is not an admin: they land like everyone else.
 		const profile = await locals.services.users.getProfile(userId);

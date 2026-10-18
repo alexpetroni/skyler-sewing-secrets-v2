@@ -128,7 +128,7 @@ describe('/auth/sign-in', () => {
 		});
 
 		it('sends an active admin to /admin and a suspended admin to the normal target', async () => {
-			await services.users.setAdmin(userId, true, userId);
+			await db().update(profiles).set({ is_admin: true }).where(eq(profiles.id, userId));
 			expect(
 				await expectRedirect(
 					submit({ email: EMAIL, password: PASSWORD, redirectTo: '/library' }).run
@@ -197,7 +197,7 @@ describe('/auth/sign-in', () => {
 
 			expect(await expectRedirect(() => load(member as unknown as LoadEvent))).toBe('/library');
 
-			await services.users.setAdmin(userId, true, userId);
+			await db().update(profiles).set({ is_admin: true }).where(eq(profiles.id, userId));
 			const admin = visit({ cookie });
 			admin.locals.user = session?.user ?? null;
 			admin.locals.profile = await services.users.getProfile(userId);
