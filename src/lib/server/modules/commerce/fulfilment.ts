@@ -390,7 +390,12 @@ export function createFulfilmentService({
 			}
 			return { duplicate: false, processed: true };
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message =
+				err instanceof DomainError
+					? `${err.code}: ${err.message}`
+					: err instanceof Error
+						? err.message
+						: String(err);
 			await db.update(webhook_events).set({ error: message }).where(eq(webhook_events.id, rowId));
 			log.error('webhook event failed', { eventId: event.id, type, error: message });
 			throw err;

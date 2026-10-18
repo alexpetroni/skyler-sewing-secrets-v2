@@ -8,9 +8,10 @@ const OTHER_ACCOUNT =
 
 /**
  * The page never trusts the URL beyond asking Stripe: the order comes from
- * the session's reference, and a signed-in viewer must be its buyer.
- * Fulfilment itself arrives through the webhook (PHASE-15); a paid session on
- * a still-pending order renders a short refresh until it lands.
+ * the session's reference, and a signed-in viewer must be its buyer. A paid
+ * session is fulfilled right here (idempotently, so the webhook racing it is
+ * harmless); if that fails the page still renders the "finalising" state and
+ * the webhook completes the order.
  */
 export const load: PageServerLoad = async ({ url, locals, cookies }) => {
 	const sessionId = url.searchParams.get('session_id');
@@ -39,11 +40,24 @@ export const load: PageServerLoad = async ({ url, locals, cookies }) => {
 	}
 
 	const paid = session.paymentStatus === 'paid';
-	// What was bought is no longer in the cart.
-	if (paid) commerce.cartCookie.write(cookies, clear());
+	let current = order;
+	if (paid) {
+		try {
+			await commerce.fulfilment.fulfilOrder(order.id, session);
+			current = (await commerce.orders.getById(order.id)) ?? order;
+		} catch (err) {
+			logger.error('fulfilment from success page failed', {
+				requestId: locals.requestId,
+				orderId: order.id,
+				error: err instanceof Error ? err.message : String(err)
+			});
+		}
+		// What was bought is no longer in the cart.
+		commerce.cartCookie.write(cookies, clear());
+	}
 
 	return {
-		summary: await commerce.orders.summaryForSuccessPage(order),
+		summary: await commerce.orders.summaryForSuccessPage(current),
 		paid,
 		signedIn: locals.user !== null
 	};

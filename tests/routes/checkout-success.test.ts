@@ -77,19 +77,57 @@ describe('/checkout/success and /checkout/cancel', () => {
 
 			expect(result.paid).toBe(true);
 			expect(result.signedIn).toBe(true);
-			// Fulfilment is the webhook's job (PHASE-15): the order is still pending here.
+			// The page fulfils a paid session itself; the webhook finds it done.
 			expect(result.summary).toMatchObject({
 				id: order.id,
-				status: 'pending',
+				status: 'paid',
 				total: 2900,
 				promoCode: null,
 				items: [{ title: 'basics-bundle', unitPrice: 2900, href: '/products/basics-bundle' }]
 			});
+			expect(result.summary.paidAt).not.toBeNull();
+			expect(await seeded.services.entitlements.ownedProductIds(seeded.users.nobody.id)).toEqual([
+				seeded.bundle.id
+			]);
 
 			const written = event.setCookies.filter((call) => call.name === CART_COOKIE_NAME);
 			expect(written).toHaveLength(1);
 			expect(parseCart(written[0].value, TEST_AUTH_SECRET)).toEqual({ items: [], promoCode: null });
 			expect(written[0].options).toMatchObject({ httpOnly: true, path: '/', sameSite: 'lax' });
+		});
+
+		it('fulfils a paid order once across the page and the webhook', async () => {
+			const session = seeded.services.payments.markPaid(sessionId);
+			await seeded.services.commerce.fulfilment.fulfilOrder(order.id, session);
+			const sentBefore = seeded.services.mailer.sent.length;
+
+			const result = await run(
+				await successEvent(seeded.users.nobody.id, `?session_id=${sessionId}`)
+			);
+			if (typeof result === 'string') throw new Error(result);
+			expect(result.summary.status).toBe('paid');
+			expect(await seeded.services.entitlements.ownedProductIds(seeded.users.nobody.id)).toEqual([
+				seeded.bundle.id
+			]);
+			expect(seeded.services.mailer.sent).toHaveLength(sentBefore);
+		});
+
+		it('still renders the finalising state when fulfilment fails, and logs it', async () => {
+			// Stripe reports a different total than the order: fulfilment refuses it.
+			seeded.services.payments.markPaid(sessionId, { amountTotal: 100 });
+			const event = await successEvent(seeded.users.nobody.id, `?session_id=${sessionId}`);
+			const result = await run(event);
+			if (typeof result === 'string') throw new Error(result);
+			expect(result.paid).toBe(true);
+			expect(result.summary.status).toBe('pending');
+			expect(await seeded.services.entitlements.ownedProductIds(seeded.users.nobody.id)).toEqual(
+				[]
+			);
+			const failures = seeded.services.logEntries.filter((entry) => entry.level === 'error');
+			expect(failures.map((entry) => entry.message)).toEqual([
+				'fulfilment from success page failed'
+			]);
+			expect(event.setCookies.filter((call) => call.name === CART_COOKIE_NAME)).toHaveLength(1);
 		});
 
 		it('leaves the cart alone and reports unpaid when Stripe has not been paid', async () => {
@@ -109,6 +147,7 @@ describe('/checkout/success and /checkout/cancel', () => {
 			expect(result.paid).toBe(true);
 			expect(result.signedIn).toBe(false);
 			expect(result.summary.id).toBe(order.id);
+			expect(result.summary.status).toBe('paid');
 		});
 
 		it('sends a missing or unknown session back to the cart', async () => {
