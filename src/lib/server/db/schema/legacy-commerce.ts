@@ -11,6 +11,8 @@ import {
 import { profiles } from './profiles.ts';
 
 export const discountType = pgEnum('discount_type', ['percentage', 'fixed']);
+// v2: `products` requires rows in `promo_code_products`.
+export const promoScope = pgEnum('promo_scope', ['all', 'products']);
 export const paymentStatus = pgEnum('payment_status', [
 	'pending',
 	'succeeded',
@@ -48,6 +50,18 @@ export const promo_codes = pgTable(
 		valid_until: timestamp('valid_until', { withTimezone: true, mode: 'string' }),
 		is_active: boolean('is_active').notNull().default(true),
 		created_by: uuid('created_by').references(() => profiles.id),
+		// v2 columns (docs/analysis/05-discounts.md): `starts_at`/`ends_at` replace
+		// `valid_from`/`valid_until`, `max_redemptions` replaces `max_uses`,
+		// `min_subtotal` replaces `min_purchase_amount`; usage is counted from
+		// `promo_redemptions` instead of `current_uses`. The legacy columns stay
+		// until the old app is retired; `backfill/promo-codes.ts` copies them over.
+		applies_to: promoScope('applies_to').notNull().default('all'),
+		max_redemptions: integer('max_redemptions'),
+		max_redemptions_per_user: integer('max_redemptions_per_user'),
+		min_subtotal: integer('min_subtotal'),
+		starts_at: timestamp('starts_at', { withTimezone: true, mode: 'string' }),
+		ends_at: timestamp('ends_at', { withTimezone: true, mode: 'string' }),
+		stackable_with_sale: boolean('stackable_with_sale').notNull().default(false),
 		created_at: timestamp('created_at', { withTimezone: true, mode: 'string' })
 			.notNull()
 			.defaultNow(),

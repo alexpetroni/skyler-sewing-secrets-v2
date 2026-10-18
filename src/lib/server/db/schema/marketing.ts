@@ -94,5 +94,8 @@ export const newsletter_subscribers = pgTable('newsletter_subscribers', {
 	subscribed_at: timestamp('subscribed_at', { withTimezone: true, mode: 'string' })
 		.notNull()
 		.defaultNow(),
-	unsubscribed_at: timestamp('unsubscribed_at', { withTimezone: true, mode: 'string' })
+	unsubscribed_at: timestamp('unsubscribed_at', { withTimezone: true, mode: 'string' }),
+	// Double opt-in (v2): null `confirmed_at` = not yet confirmed.
+	confirmed_at: timestamp('confirmed_at', { withTimezone: true, mode: 'string' }),
+	confirm_token_hash: text('confirm_token_hash')
 });
