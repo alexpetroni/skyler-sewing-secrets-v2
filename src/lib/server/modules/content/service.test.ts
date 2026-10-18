@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { useTestDb } from '../../../../../tests/helpers/db.ts';
 import { createTestServices } from '../../../../../tests/helpers/services.ts';
-import { schema } from '#lib/server/db/index.ts';
+import { schema, withTx } from '#lib/server/db/index.ts';
 import type { LessonInput, ModuleInput } from '#lib/shared/schemas/content.ts';
 import { DomainError } from '../errors.ts';
 import { renderMarkdown } from './markdown.ts';
@@ -725,14 +725,19 @@ describe('createContentService', () => {
 			await content.progress.upsert({ userId, lessonId: notStarted.id, positionSeconds: 0 });
 			await content.progress.upsert({ userId, lessonId: done1.id, completed: true });
 			await content.progress.upsert({ userId, lessonId: done2.id, completed: true });
-			const setTimes = async (lessonId: string, minutesAgo: number) =>
-				db()
-					.update(user_progress)
-					.set({
-						updated_at: sql`now() - make_interval(mins => ${minutesAgo})`,
-						completed_at: sql`case when ${user_progress.completed} then now() - make_interval(mins => ${minutesAgo}) end`
-					})
-					.where(eq(user_progress.lesson_id, lessonId));
+			// The legacy `update_user_progress_updated_at` trigger resets `updated_at` to
+			// now() on every UPDATE, so the fixture time only sticks with triggers off.
+			const setTimes = (lessonId: string, minutesAgo: number) =>
+				withTx(db(), async (tx) => {
+					await tx.execute(sql`set local session_replication_role = replica`);
+					await tx
+						.update(user_progress)
+						.set({
+							updated_at: sql`now() - make_interval(mins => ${minutesAgo})`,
+							completed_at: sql`case when ${user_progress.completed} then now() - make_interval(mins => ${minutesAgo}) end`
+						})
+						.where(eq(user_progress.lesson_id, lessonId));
+				});
 			await setTimes(older.id, 30);
 			await setTimes(newer.id, 20);
 			await setTimes(solo.id, 10);
