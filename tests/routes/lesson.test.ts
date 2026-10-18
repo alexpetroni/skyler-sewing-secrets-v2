@@ -73,12 +73,14 @@ describe('lesson pages', () => {
 		if (!page.locked) throw new Error('expected a locked page');
 		expect(page.unlockOptions).toEqual({
 			cheapest: {
+				id: seeded.bundle.id,
 				slug: 'basics-bundle',
 				title: 'basics-bundle',
 				kind: 'bundle',
 				pricing: { price: 2900, listPrice: 2900, onSale: false }
 			},
 			flagship: {
+				id: seeded.flagship.id,
 				slug: 'the-course',
 				title: 'the-course',
 				kind: 'course',

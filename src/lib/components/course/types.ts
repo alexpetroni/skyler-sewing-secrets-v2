@@ -23,6 +23,8 @@ export interface ResourceLink {
 
 /** A product that unlocks a locked lesson, with what it costs now. */
 export interface UnlockOffer {
+	/** The product id `AddToCartButton` posts. */
+	id: string;
 	slug: string;
 	title: string;
 	kind: 'course' | 'bundle' | 'single';

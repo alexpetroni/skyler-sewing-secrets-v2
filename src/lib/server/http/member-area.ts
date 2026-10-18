@@ -73,6 +73,7 @@ export async function progressByLesson(locals: App.Locals): Promise<Map<string, 
 
 function toOffer({ product, pricing }: LessonOffer): UnlockOffer {
 	return {
+		id: product.id,
 		slug: product.slug,
 		title: product.title,
 		kind: product.kind,

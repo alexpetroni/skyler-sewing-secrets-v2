@@ -7,6 +7,7 @@ import VideoPlayer from './VideoPlayer.svelte';
 import type { UnlockOffer } from './types.ts';
 
 const SINGLE: UnlockOffer = {
+	id: '00000000-0000-4000-8000-000000000009',
 	slug: 'standalone-video',
 	title: 'Standalone video',
 	kind: 'single',
@@ -14,6 +15,7 @@ const SINGLE: UnlockOffer = {
 };
 
 const FLAGSHIP: UnlockOffer = {
+	id: '00000000-0000-4000-8000-000000000149',
 	slug: 'the-course',
 	title: 'The course',
 	kind: 'course',
@@ -44,6 +46,28 @@ describe('LockedLesson', () => {
 		expect(body).toContain('href="/auth/sign-in?redirectTo=%2Fvideos%2Fpressing"');
 	});
 
+	it('renders an add-to-cart form posting each unlock option to the cart', () => {
+		const { body } = render(LockedLesson, {
+			props: {
+				title: 'Pressing seams',
+				description: null,
+				cheapest: SINGLE,
+				flagship: FLAGSHIP,
+				signInHref: null
+			}
+		});
+
+		const forms = body.match(/<form[^>]*action="\/cart\?\/add"[\s\S]*?<\/form>/g) ?? [];
+		expect(forms).toHaveLength(2);
+		expect(forms[0]).toContain(`name="productId" value="${SINGLE.id}"`);
+		expect(forms[1]).toContain(`name="productId" value="${FLAGSHIP.id}"`);
+		for (const form of forms) {
+			expect(form).toContain('method="POST"');
+			expect(form).toContain('Add to cart');
+			expect(form).not.toContain('disabled');
+		}
+	});
+
 	it('lists the flagship once when it is the cheapest option and omits sign-in when signed in', () => {
 		const { body } = render(LockedLesson, {
 			props: {
@@ -56,6 +80,7 @@ describe('LockedLesson', () => {
 		});
 
 		expect(body.match(/href="\/products\/the-course"/g)).toHaveLength(1);
+		expect(body.match(/action="\/cart\?\/add"/g)).toHaveLength(1);
 		expect(body).not.toContain('Sign in');
 		expect(body).not.toContain('/checkout');
 	});

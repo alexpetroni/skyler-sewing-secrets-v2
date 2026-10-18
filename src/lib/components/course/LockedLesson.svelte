@@ -1,5 +1,6 @@
 <script lang="ts">
 	/* eslint-disable svelte/no-navigation-without-resolve -- links are root-relative with no base path */
+	import AddToCartButton from '#lib/components/shop/AddToCartButton.svelte';
 	import { formatPence } from '#lib/shared/money.ts';
 	import type { UnlockOffer } from './types.ts';
 
@@ -63,15 +64,16 @@
 			</p>
 			<ul class="mx-auto mt-6 grid max-w-xl gap-3 {offers.length > 1 ? 'sm:grid-cols-2' : ''}">
 				{#each offers as offer (offer.slug)}
-					<li>
-						<a
-							href="/products/{offer.slug}"
-							class="group block h-full rounded-2xl bg-white p-5 text-left ring-1 ring-charcoal-900/[0.06] transition-all duration-600 ease-fluid ring-inset hover:-translate-y-0.5 hover:shadow-lift"
-						>
+					<li
+						class="flex h-full flex-col rounded-2xl bg-white p-5 text-left ring-1 ring-charcoal-900/[0.06] transition-all duration-600 ease-fluid ring-inset hover:-translate-y-0.5 hover:shadow-lift"
+					>
+						<a href="/products/{offer.slug}" class="group block">
 							<span class="block text-[10px] tracking-eyebrow text-charcoal-400 uppercase">
 								{KIND_LABELS[offer.kind]}
 							</span>
-							<span class="mt-2 block truncate text-[14px] font-medium text-charcoal-900">
+							<span
+								class="mt-2 block truncate text-[14px] font-medium text-charcoal-900 transition-colors duration-400 ease-fluid group-hover:text-brand-700"
+							>
 								{offer.title}
 							</span>
 							<span class="mt-3 flex items-baseline gap-2">
@@ -84,6 +86,7 @@
 								{/if}
 							</span>
 						</a>
+						<AddToCartButton productId={offer.id} size="sm" class="mt-auto pt-4" />
 					</li>
 				{/each}
 			</ul>
