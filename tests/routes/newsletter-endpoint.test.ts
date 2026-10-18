@@ -34,9 +34,9 @@ describe('POST /api/newsletter', () => {
 			method: 'POST',
 			url: '/api/newsletter',
 			body,
-			locals: { services, requestId: 'req-1' }
+			locals: { services, requestId: 'req-1' },
+			clientAddress: ip
 		});
-		event.getClientAddress = () => ip;
 		const response = await POST(event as unknown as PostEvent);
 		return {
 			status: response.status,

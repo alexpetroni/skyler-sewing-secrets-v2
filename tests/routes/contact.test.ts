@@ -37,9 +37,9 @@ describe('/contact action', () => {
 			method: 'POST',
 			url: '/contact',
 			body,
-			locals: { services, requestId: 'req-1' }
+			locals: { services, requestId: 'req-1' },
+			clientAddress: ip
 		});
-		event.getClientAddress = () => ip;
 		return actions.default(event as unknown as ActionEvent);
 	}
 

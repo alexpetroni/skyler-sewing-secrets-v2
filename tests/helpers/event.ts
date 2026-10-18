@@ -11,6 +11,8 @@ export interface FakeEventOptions {
 	body?: BodyInit | null;
 	locals?: Partial<App.Locals>;
 	isDataRequest?: boolean;
+	/** What `getClientAddress()` returns; `127.0.0.1` by default. */
+	clientAddress?: string;
 }
 
 export interface SetCookieCall {
@@ -89,7 +91,7 @@ export function fakeEvent(options: FakeEventOptions = {}): FakeEvent {
 		isSubRequest: false,
 		isRemoteRequest: false,
 		fetch: globalThis.fetch,
-		getClientAddress: () => '127.0.0.1',
+		getClientAddress: () => options.clientAddress ?? '127.0.0.1',
 		setHeaders: (headers: Record<string, string>) => {
 			Object.assign(responseHeaders, headers);
 		},
