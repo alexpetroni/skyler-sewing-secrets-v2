@@ -17,7 +17,8 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"db:generate": "drizzle-kit generate",
-		"db:migrate": "drizzle-kit migrate"
+		"db:migrate": "drizzle-kit migrate",
+		"backfill": "tsx scripts/backfill/run.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
