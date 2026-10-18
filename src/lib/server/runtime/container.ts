@@ -5,7 +5,19 @@ import {
 	type Auth,
 	type AuthService
 } from '#lib/server/modules/auth/index.ts';
-import { createLogger, type Logger } from '#lib/server/platform/logger.ts';
+import { passwordResetEmail } from '#lib/server/modules/marketing/index.ts';
+import {
+	createBunnyVideoHost,
+	createLogger,
+	createRequestLimiter,
+	createResendMailer,
+	createStripeGateway,
+	type Logger,
+	type Mailer,
+	type PaymentGateway,
+	type RequestLimiter,
+	type VideoHost
+} from '#lib/server/platform/index.ts';
 import { getRuntimeConfig, type RuntimeConfig } from './env.ts';
 
 /**
@@ -17,6 +29,10 @@ export interface Services {
 	auth: Auth;
 	users: AuthService;
 	logger: Logger;
+	payments: PaymentGateway;
+	videoHost: VideoHost;
+	mailer: Mailer;
+	limiter: RequestLimiter;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
 }
@@ -25,15 +41,18 @@ export interface Services {
 export async function createServices(config: RuntimeConfig): Promise<Services> {
 	const logger = createLogger({ level: 'info' });
 	const db = await createDb({ url: config.databaseUrl, driver: config.databaseDriver });
+	const mailer = createResendMailer({
+		apiKey: config.resend.apiKey,
+		from: config.resend.fromEmail,
+		fetch
+	});
 	const auth = createAuth({
 		db,
 		secret: config.betterAuthSecret,
 		baseURL: config.siteUrl,
 		google: config.google,
-		// The Resend mailer and the email templates arrive in PHASE-06; until
-		// then a reset request is recorded without the address or the link.
-		sendPasswordReset: async () => {
-			logger.warn('password reset email not sent: no mailer configured yet');
+		sendPasswordReset: async (to, url) => {
+			await mailer.send({ to, ...passwordResetEmail(url, config.siteUrl) });
 		}
 	});
 
@@ -42,6 +61,19 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		auth,
 		users: createAuthService({ db }),
 		logger,
+		payments: createStripeGateway({
+			secretKey: config.stripe.secretKey,
+			webhookSecret: config.stripe.webhookSecret
+		}),
+		videoHost: createBunnyVideoHost({
+			libraryId: config.bunny.videoLibraryId,
+			apiKey: config.bunny.videoApiKey,
+			embedTokenKey: config.bunny.embedTokenKey,
+			cdnHost: config.bunny.streamCdnHost,
+			fetch
+		}),
+		mailer,
+		limiter: createRequestLimiter({ db }),
 		googleEnabled: config.google !== undefined
 	};
 }

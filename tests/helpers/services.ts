@@ -1,6 +1,16 @@
 import { createAuth, createAuthService } from '../../src/lib/server/modules/auth/index.ts';
 import type { Db } from '../../src/lib/server/db/index.ts';
 import { createFakeLogger, type LogEntry } from '../../src/lib/server/platform/fakes/logger.ts';
+import { createFakeMailer, type FakeMailer } from '../../src/lib/server/platform/fakes/mailer.ts';
+import {
+	createFakePaymentGateway,
+	type FakePaymentGateway
+} from '../../src/lib/server/platform/fakes/payment-gateway.ts';
+import {
+	createFakeVideoHost,
+	type FakeVideoHost
+} from '../../src/lib/server/platform/fakes/video-host.ts';
+import { createRequestLimiter } from '../../src/lib/server/platform/request-limits.ts';
 import type { Services } from '../../src/lib/server/runtime/container.ts';
 
 export const TEST_SITE_URL = 'http://localhost:5173';
@@ -8,6 +18,9 @@ export const TEST_SITE_URL = 'http://localhost:5173';
 export type { LogEntry };
 
 export interface TestServices extends Services {
+	payments: FakePaymentGateway;
+	videoHost: FakeVideoHost;
+	mailer: FakeMailer;
 	/** Reset emails the fake mailer "sent". */
 	resetEmails: Array<{ to: string; url: string }>;
 	logEntries: LogEntry[];
@@ -43,6 +56,10 @@ export function createTestServices(
 		auth,
 		users: createAuthService({ db }),
 		logger,
+		payments: createFakePaymentGateway(),
+		videoHost: createFakeVideoHost(),
+		mailer: createFakeMailer(),
+		limiter: createRequestLimiter({ db }),
 		googleEnabled: google !== undefined,
 		resetEmails,
 		logEntries: logger.entries
