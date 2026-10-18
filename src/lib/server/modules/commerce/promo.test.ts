@@ -6,7 +6,13 @@ import { schema, withTx } from '#lib/server/db/index.ts';
 import { createFakeLogger } from '#lib/server/platform/fakes/logger.ts';
 import type { PromoInput } from '#lib/shared/schemas/commerce.ts';
 import { DomainError } from '../errors.ts';
-import { createPromoService, normalizeCode, PromoRejectedError, type PromoLine } from './promo.ts';
+import {
+	createPromoService,
+	normalizeCode,
+	PromoRejectedError,
+	promoStatus,
+	type PromoLine
+} from './promo.ts';
 
 vi.mock('$app/server', () => ({ getRequestEvent: () => null }));
 
@@ -557,6 +563,76 @@ describe('createPromoService', () => {
 			await promo().create(promoInput());
 			expect(await db().select().from(audit_log)).toHaveLength(0);
 			expect(await db().select().from(promo_codes)).toHaveLength(1);
+		});
+	});
+
+	describe('admin views and removal', () => {
+		it('promoStatus orders inactive, expired, exhausted, scheduled, active', () => {
+			const base = {
+				is_active: true,
+				starts_at: null,
+				ends_at: null,
+				max_redemptions: null,
+				redemptionCount: 0
+			};
+			expect(promoStatus(base, NOW)).toBe('active');
+			expect(promoStatus({ ...base, is_active: false, ends_at: YESTERDAY }, NOW)).toBe('inactive');
+			expect(promoStatus({ ...base, ends_at: YESTERDAY, max_redemptions: 0 }, NOW)).toBe('expired');
+			expect(
+				promoStatus({ ...base, max_redemptions: 2, redemptionCount: 2, starts_at: TOMORROW }, NOW)
+			).toBe('exhausted');
+			expect(promoStatus({ ...base, starts_at: TOMORROW, ends_at: null }, NOW)).toBe('scheduled');
+			expect(promoStatus({ ...base, max_redemptions: 2, redemptionCount: 1 }, NOW)).toBe('active');
+		});
+
+		it('listForProduct returns only codes scoped to that product', async () => {
+			const [a, b] = [await product('a'), await product('b')];
+			const scoped = await promo().create(
+				promoInput({ appliesTo: 'products', productIds: [a, b] })
+			);
+			await promo().create(promoInput({ appliesTo: 'products', productIds: [b] }));
+			await promo().create(promoInput({ appliesTo: 'all' }));
+			expect((await promo().listForProduct(a)).map((code) => code.id)).toEqual([scoped.id]);
+		});
+
+		it('exportRedemptionsCsv quotes every cell under a header', async () => {
+			const code = await promo().create(promoInput({ code: 'CSV10' }));
+			const buyer = await user('=cmd@example.com');
+			const orderId = await order(buyer);
+			await reserve(code.id, orderId, buyer);
+
+			const csv = await promo().exportRedemptionsCsv(code.id);
+			expect(csv.split('\r\n')).toEqual([
+				'"order_id","buyer_email","discount_pence","redeemed_at","order_status"',
+				`"${orderId}","'=cmd@example.com","290","${NOW.toISOString()}","paid"`,
+				''
+			]);
+		});
+
+		it('remove deletes an unused code and refuses one with a redemption', async () => {
+			const adminId = await user('admin@example.com');
+			const unused = await promo().create(
+				promoInput({ appliesTo: 'products', productIds: [await product('p')] })
+			);
+			await promo().remove(unused.id, adminId);
+			expect(await promo().getById(unused.id)).toBeNull();
+			const [entry] = await db()
+				.select()
+				.from(audit_log)
+				.where(eq(audit_log.action, 'promo.delete'));
+			expect(entry).toMatchObject({ entity_id: unused.id, after: null });
+
+			const used = await promo().create(promoInput());
+			const buyer = await user('buyer@example.com');
+			// An expired order still references the code.
+			const orderId = await order(buyer, 'expired');
+			await reserve(used.id, orderId, buyer);
+			const err = await promo()
+				.remove(used.id)
+				.catch((error: unknown) => error);
+			expect(err).toBeInstanceOf(DomainError);
+			expect((err as DomainError).code).toBe('PROMO_HAS_HISTORY');
+			expect(await promo().getById(used.id)).not.toBeNull();
 		});
 	});
 });

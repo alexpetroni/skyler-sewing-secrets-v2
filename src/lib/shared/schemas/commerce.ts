@@ -1,5 +1,6 @@
 import * as v from 'valibot';
-import { optionalDateField } from './catalog.ts';
+import { parsePounds } from '../money.ts';
+import { optionalDateField, utcDateTimeField } from './catalog.ts';
 import { idSchema } from './content.ts';
 
 /** Codes are stored upper-case; `normalizeCode` applies the same rule before lookup. */
@@ -91,9 +92,9 @@ const promoFields = {
 	stackableWithSale: v.optional(v.boolean(), false)
 };
 
-const PERCENT_MESSAGE = `A percentage must be between ${PERCENT_MIN} and ${PERCENT_MAX}`;
-const PRODUCTS_MESSAGE = 'Select at least one product';
-const WINDOW_MESSAGE = 'The code must end after it starts';
+export const PERCENT_MESSAGE = `A percentage must be between ${PERCENT_MIN} and ${PERCENT_MAX}`;
+export const PRODUCTS_MESSAGE = 'Select at least one product';
+export const WINDOW_MESSAGE = 'The code must end after it starts';
 
 /** Admin create / edit form (docs/analysis/05-discounts.md → Admin UI). */
 export const promoInputSchema = v.pipe(
@@ -179,3 +180,142 @@ export type BulkGenerateInput = v.InferOutput<typeof bulkGenerateSchema>;
 
 export const promoProductsSchema = v.object({ productIds: v.array(productIdSchema) });
 export const promoActiveSchema = v.object({ active: v.boolean() });
+
+/** Where a code stands now; the admin list filters by it. */
+export const promoStatuses = ['active', 'scheduled', 'expired', 'exhausted', 'inactive'] as const;
+export type PromoStatus = (typeof promoStatuses)[number];
+
+export const promoListQuerySchema = v.object({
+	status: v.pipe(
+		v.optional(v.string(), ''),
+		v.transform((value) =>
+			(promoStatuses as readonly string[]).includes(value) ? (value as PromoStatus) : undefined
+		)
+	)
+});
+
+/** Length of a code from the form's generate button. */
+export const GENERATED_CODE_LENGTH = 8;
+const GENERATED_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+/** Eight random upper-case letters and digits (Web Crypto, in the browser or on the server). */
+export function generatePromoCode(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(GENERATED_CODE_LENGTH));
+	return Array.from(bytes, (byte) => GENERATED_ALPHABET[byte % GENERATED_ALPHABET.length]).join('');
+}
+
+const FIXED_MESSAGE = 'Enter pounds and pence, e.g. 5 or 4.99';
+
+/** The typed discount as stored: a whole percentage, or pence for a fixed amount. */
+function discountAmount(type: DiscountType, text: string): number | null {
+	if (type === 'percentage') return /^\d{1,3}$/.test(text) ? Number(text) : null;
+	return parsePounds(text);
+}
+
+/** Pounds typed by the admin as pence; empty → null. */
+const optionalPoundsField = v.pipe(
+	v.optional(v.string(), ''),
+	v.trim(),
+	v.check((value) => value === '' || parsePounds(value) !== null, FIXED_MESSAGE),
+	v.transform((value) => (value === '' ? null : parsePounds(value)))
+);
+
+/** The terms a code form and a bulk form share, as the admin types them. */
+const promoFormTerms = {
+	description: promoFields.description,
+	discountType: promoFields.discountType,
+	/** A percentage, or pounds for a fixed discount. */
+	discountValue: v.pipe(v.optional(v.string(), ''), v.trim(), v.nonEmpty('Enter the discount')),
+	appliesTo: promoFields.appliesTo,
+	productIds: promoFields.productIds,
+	minSubtotal: optionalPoundsField,
+	startsAt: utcDateTimeField,
+	endsAt: utcDateTimeField,
+	isActive: v.optional(v.boolean(), false),
+	stackableWithSale: v.optional(v.boolean(), false)
+};
+
+interface FormTerms {
+	discountType: DiscountType;
+	discountValue: string;
+	appliesTo: PromoScope;
+	productIds: string[];
+	startsAt: string | null;
+	endsAt: string | null;
+}
+
+/** The checks of `promoInputSchema`, on the typed value and with the same messages. */
+const fixedValid = (input: FormTerms) => {
+	const amount = discountAmount(input.discountType, input.discountValue);
+	return input.discountType !== 'fixed' || (amount !== null && amount >= 1);
+};
+const percentValid = (input: FormTerms) => {
+	if (input.discountType !== 'percentage') return true;
+	const amount = discountAmount('percentage', input.discountValue);
+	return amount !== null && amount >= PERCENT_MIN && amount <= PERCENT_MAX;
+};
+const productsChosen = (input: FormTerms) =>
+	input.appliesTo !== 'products' || input.productIds.length > 0;
+const windowValid = (input: FormTerms) =>
+	input.startsAt === null || input.endsAt === null || input.startsAt < input.endsAt;
+
+/** The typed discount as stored, and no products for an all-products code. */
+function storedTerms(input: FormTerms): { discountValue: number; productIds: string[] } {
+	return {
+		discountValue: discountAmount(input.discountType, input.discountValue) ?? 0,
+		productIds: input.appliesTo === 'products' ? input.productIds : []
+	};
+}
+
+/** `/admin/promotions/new` and `/admin/promotions/[id]`: the form's fields to a `PromoInput`. */
+export const promoFormSchema = v.pipe(
+	v.object({
+		code: promoInputSchema.pipe[0].entries.code,
+		...promoFormTerms,
+		maxRedemptions: optionalCount,
+		maxRedemptionsPerUser: optionalCount
+	}),
+	v.forward(
+		v.check((input) => fixedValid(input), FIXED_MESSAGE),
+		['discountValue']
+	),
+	v.forward(
+		v.check((input) => percentValid(input), PERCENT_MESSAGE),
+		['discountValue']
+	),
+	v.forward(
+		v.check((input) => productsChosen(input), PRODUCTS_MESSAGE),
+		['productIds']
+	),
+	v.forward(
+		v.check((input) => windowValid(input), WINDOW_MESSAGE),
+		['endsAt']
+	),
+	v.transform((input): PromoInput => ({ ...input, ...storedTerms(input) }))
+);
+
+/** `/admin/promotions/bulk`: the form's fields to a `BulkGenerateInput`. */
+export const bulkFormSchema = v.pipe(
+	v.object({
+		prefix: bulkGenerateSchema.pipe[0].entries.prefix,
+		count: bulkGenerateSchema.pipe[0].entries.count,
+		...promoFormTerms
+	}),
+	v.forward(
+		v.check((input) => fixedValid(input), FIXED_MESSAGE),
+		['discountValue']
+	),
+	v.forward(
+		v.check((input) => percentValid(input), PERCENT_MESSAGE),
+		['discountValue']
+	),
+	v.forward(
+		v.check((input) => productsChosen(input), PRODUCTS_MESSAGE),
+		['productIds']
+	),
+	v.forward(
+		v.check((input) => windowValid(input), WINDOW_MESSAGE),
+		['endsAt']
+	),
+	v.transform((input): BulkGenerateInput => ({ ...input, ...storedTerms(input) }))
+);

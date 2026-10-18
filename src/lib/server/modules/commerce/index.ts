@@ -72,6 +72,8 @@ export {
 	createPromoService,
 	normalizeCode,
 	PromoRejectedError,
+	promoStatus,
+	REDEMPTIONS_CSV_HEADER,
 	type CreatePromoServiceDeps,
 	type FindValidParams,
 	type FindValidResult,

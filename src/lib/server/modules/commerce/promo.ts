@@ -5,12 +5,22 @@ import type { Logger } from '#lib/server/platform/index.ts';
 import {
 	PROMO_CODE_PATTERN,
 	type BulkGenerateInput,
-	type PromoInput
+	type PromoInput,
+	type PromoStatus
 } from '#lib/shared/schemas/commerce.ts';
+import { toCsv } from '../csv.ts';
 import { DomainError } from '../errors.ts';
 import { checkEligibility, type PromoRejection, type PromoRule } from './pricing.ts';
 
-const { promo_codes, promo_code_products, promo_redemptions, orders, profiles, audit_log } = schema;
+const {
+	promo_codes,
+	promo_code_products,
+	promo_redemptions,
+	orders,
+	payments,
+	profiles,
+	audit_log
+} = schema;
 
 export type PromoCode = typeof promo_codes.$inferSelect;
 export type PromoRedemption = typeof promo_redemptions.$inferSelect;
@@ -95,6 +105,36 @@ export interface PromoService {
 	/** `count` single-use codes `PREFIX-XXXXXX` sharing the given terms. */
 	bulkGenerate(input: BulkGenerateInput, actorId?: string): Promise<PromoCode[]>;
 	listRedemptions(codeId: string): Promise<RedemptionRow[]>;
+	/** `listRedemptions` as CSV, every cell quoted (`../csv.ts`). */
+	exportRedemptionsCsv(codeId: string): Promise<string>;
+	/** Codes scoped to selected products that include this one, newest first. */
+	listForProduct(productId: string): Promise<PromoCodeSummary[]>;
+	/** Only a code no order or payment ever used; otherwise `PROMO_HAS_HISTORY` (deactivate it). */
+	remove(id: string, actorId?: string): Promise<void>;
+}
+
+export const REDEMPTIONS_CSV_HEADER = [
+	'order_id',
+	'buyer_email',
+	'discount_pence',
+	'redeemed_at',
+	'order_status'
+] as const;
+
+/** Where a code stands at `now`, in the order the admin list filters by. */
+export function promoStatus(
+	code: Pick<PromoCodeSummary, 'is_active' | 'starts_at' | 'ends_at' | 'max_redemptions'> & {
+		redemptionCount: number;
+	},
+	now: Date = new Date()
+): PromoStatus {
+	if (!code.is_active) return 'inactive';
+	if (code.ends_at && Date.parse(code.ends_at) <= now.getTime()) return 'expired';
+	if (code.max_redemptions !== null && code.redemptionCount >= code.max_redemptions) {
+		return 'exhausted';
+	}
+	if (code.starts_at && Date.parse(code.starts_at) > now.getTime()) return 'scheduled';
+	return 'active';
 }
 
 export interface CreatePromoServiceDeps {
@@ -253,7 +293,7 @@ export function createPromoService({ db, log }: CreatePromoServiceDeps): PromoSe
 		return { ...row, productIds, redemptionCount: counts.total };
 	}
 
-	return {
+	const service: PromoService = {
 		normalizeCode,
 
 		async findValidByCode(input, { userId, lines, now = new Date() }, tx) {
@@ -488,6 +528,57 @@ export function createPromoService({ db, log }: CreatePromoServiceDeps): PromoSe
 				.where(eq(promo_redemptions.promo_code_id, codeId))
 				.orderBy(asc(promo_redemptions.created_at));
 			return rows;
-		}
+		},
+
+		async exportRedemptionsCsv(codeId) {
+			const rows = await service.listRedemptions(codeId);
+			return toCsv([
+				REDEMPTIONS_CSV_HEADER,
+				...rows.map((row) => [
+					row.orderId,
+					row.userEmail,
+					row.discountTotal,
+					new Date(row.createdAt).toISOString(),
+					row.orderStatus
+				])
+			]);
+		},
+
+		async listForProduct(productId) {
+			const codes = await service.list();
+			return codes.filter(
+				(code) => code.applies_to === 'products' && code.productIds.includes(productId)
+			);
+		},
+
+		remove: (id, actorId) =>
+			withTx(db, async (tx) => {
+				const before = await requireCode(tx, id);
+				const [redeemed] = await tx
+					.select({ id: promo_redemptions.id })
+					.from(promo_redemptions)
+					.where(eq(promo_redemptions.promo_code_id, id))
+					.limit(1);
+				const [ordered] = await tx
+					.select({ id: orders.id })
+					.from(orders)
+					.where(eq(orders.promo_code_id, id))
+					.limit(1);
+				const [paid] = await tx
+					.select({ id: payments.id })
+					.from(payments)
+					.where(eq(payments.promo_code_id, id))
+					.limit(1);
+				if (redeemed || ordered || paid) {
+					throw new DomainError(
+						'PROMO_HAS_HISTORY',
+						'This code has been used; deactivate it instead of deleting it'
+					);
+				}
+				await tx.delete(promo_codes).where(eq(promo_codes.id, id));
+				await audit(tx, actorId, 'promo.delete', id, before, null);
+				log.info('promo code deleted', { promoCodeId: id });
+			})
 	};
+	return service;
 }

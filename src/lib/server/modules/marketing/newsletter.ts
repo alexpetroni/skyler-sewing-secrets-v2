@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { desc, eq } from 'drizzle-orm';
 import { schema, type Db } from '#lib/server/db/index.ts';
 import type { Logger, Mailer } from '#lib/server/platform/index.ts';
+import { csvCell, toCsv } from '../csv.ts';
 import { newsletterConfirmEmail, newsletterWelcomeEmail } from './emails.ts';
 
 const { newsletter_subscribers } = schema;
@@ -53,21 +54,8 @@ function hashToken(token: string): string {
 	return createHash('sha256').update(token).digest('hex');
 }
 
-/** A spreadsheet cannot run a cell that starts with one of these as a formula once prefixed. */
-const FORMULA_PREFIXES = ['=', '+', '-', '@'];
-
-/** One CSV cell: always quoted, quotes doubled, leading formula characters prefixed with `'`. */
-export function csvCell(value: string | number | boolean | null): string {
-	let text = value === null ? '' : String(value);
-	if (FORMULA_PREFIXES.some((prefix) => text.startsWith(prefix))) text = `'${text}`;
-	return `"${text.replaceAll('"', '""')}"`;
-}
-
-export function toCsv(
-	rows: ReadonlyArray<ReadonlyArray<string | number | boolean | null>>
-): string {
-	return rows.map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
-}
+/** Re-exported for the module's public API; the quoting rules live in `../csv.ts`. */
+export { csvCell, toCsv };
 
 export const CSV_HEADER = [
 	'email',
