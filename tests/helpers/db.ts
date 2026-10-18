@@ -9,7 +9,12 @@ export interface TestDb {
 	db: Db;
 	/** Shuts the PGlite instance down. */
 	close(): Promise<void>;
-	/** Empties every public table (except the migrations ledger) with CASCADE. */
+	/**
+	 * Empties every public table with CASCADE. This also removes the rows seeded
+	 * by `0001_triggers_functions_seed.sql` (the `pricing_config` default and
+	 * `site_settings.maintenance_mode`), which production always has: a test
+	 * that depends on them inserts them itself after truncation.
+	 */
 	truncateAll(): Promise<void>;
 }
 
@@ -26,6 +31,8 @@ export async function createTestDb(): Promise<TestDb> {
 		db,
 		close: () => client.close(),
 		truncateAll: async () => {
+			// The migrations ledger lives in the `drizzle` schema, so the `public`
+			// filter already excludes it; the name check guards a custom ledger location.
 			const rows = await db.execute<{ table_name: string }>(sql`
 				SELECT table_name
 				FROM information_schema.tables
@@ -45,8 +52,9 @@ export async function createTestDb(): Promise<TestDb> {
 
 /**
  * Registers the per-file lifecycle: one PGlite created in `beforeAll`, every
- * table truncated in `beforeEach`, the instance closed in `afterAll`. Read the
- * database through the returned getter inside tests, never at module scope.
+ * table truncated in `beforeEach` (seed rows included, see `truncateAll`), the
+ * instance closed in `afterAll`. Read the database through the returned getter
+ * inside tests, never at module scope.
  *
  * @example
  * const { db } = useTestDb();

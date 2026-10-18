@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { schema } from '../../src/lib/server/db/index.ts';
-import { useTestDb } from '../helpers/db.ts';
+import { createTestDb, useTestDb } from '../helpers/db.ts';
 
 const LEGACY_TABLES = [
 	'users',
@@ -56,28 +56,26 @@ describe('legacy migrations applied to PGlite', () => {
 	});
 
 	it('seeds the default pricing row and maintenance_mode setting', async () => {
-		// Seed rows come from the migration, not from a test: re-apply after truncation.
-		await db().execute(sql`
-			INSERT INTO pricing_config (name, base_price, currency, is_active)
-			VALUES ('Lifetime Access', 14900, 'gbp', true) ON CONFLICT (name) DO NOTHING
-		`);
-		await db().execute(sql`
-			INSERT INTO site_settings (key, value) VALUES ('maintenance_mode', 'false')
-			ON CONFLICT (key) DO NOTHING
-		`);
-		const pricing = await db().query.pricing_config.findMany();
-		expect(pricing).toHaveLength(1);
-		expect(pricing[0]).toMatchObject({
-			name: 'Lifetime Access',
-			base_price: 14900,
-			currency: 'gbp',
-			is_active: true
-		});
+		// `useTestDb()` truncates every table before each test, which removes the
+		// rows 0001_triggers_functions_seed.sql inserted. Assert against a database
+		// that has only had the migrations applied, so the migration is what is tested.
+		const fresh = await createTestDb();
+		try {
+			const pricing = await fresh.db.query.pricing_config.findMany();
+			expect(pricing).toHaveLength(1);
+			expect(pricing[0]).toMatchObject({
+				name: 'Lifetime Access',
+				base_price: 14900,
+				currency: 'gbp',
+				is_active: true
+			});
 
-		const maintenance = await db().query.site_settings.findFirst({
-			where: eq(schema.site_settings.key, 'maintenance_mode')
-		});
-		expect(maintenance?.value).toBe('false');
+			const settings = await fresh.db.query.site_settings.findMany();
+			expect(settings).toHaveLength(1);
+			expect(settings[0]).toMatchObject({ key: 'maintenance_mode', value: 'false' });
+		} finally {
+			await fresh.close();
+		}
 	});
 
 	it('bumps profiles.updated_at through the trigger on update', async () => {
