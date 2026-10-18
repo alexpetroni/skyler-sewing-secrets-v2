@@ -31,4 +31,9 @@ describe('parsePounds', () => {
 	it('rejects non-numeric input', () => {
 		expect(parsePounds('abc')).toBeNull();
 	});
+
+	it('rejects amounts whose pence would not be a safe integer', () => {
+		expect(parsePounds('99999999999999999999')).toBeNull();
+		expect(parsePounds('9999999999.99')).toBe(999_999_999_999);
+	});
 });
