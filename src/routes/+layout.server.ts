@@ -1,10 +1,9 @@
-import type { Viewer } from '#lib/shared/viewer.ts';
+import { toViewer } from '#lib/server/modules/auth/index.ts';
 import type { LayoutServerLoad } from './$types';
 
-// PHASE-05 resolves the viewer from the session and maintenance from settings.
-export const load: LayoutServerLoad = () => {
+export const load: LayoutServerLoad = ({ locals }) => {
 	return {
-		viewer: null as Viewer | null,
-		maintenance: false
+		viewer: toViewer(locals.profile),
+		maintenance: locals.maintenanceMode
 	};
 };
