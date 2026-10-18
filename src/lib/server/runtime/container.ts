@@ -1,4 +1,5 @@
 import { createDb, type Db } from '#lib/server/db/index.ts';
+import { createAdminService, type AdminService } from '#lib/server/modules/admin/index.ts';
 import {
 	createAuth,
 	createAuthService,
@@ -60,6 +61,7 @@ export interface Services {
 	entitlements: EntitlementService;
 	marketing: MarketingService;
 	commerce: CommerceServices;
+	admin: AdminService;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
 	/** The bearer secret the `/api/jobs/*` endpoints require. */
@@ -113,6 +115,15 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		log: logger,
 		siteUrl: config.siteUrl
 	});
+	const fulfilment = createFulfilmentService({
+		db,
+		orders,
+		entitlements,
+		auth: users,
+		mailer,
+		log: logger,
+		siteUrl: config.siteUrl
+	});
 	// Built only when configured; the marketing service skips the check otherwise.
 	const turnstile = config.turnstile
 		? createTurnstileVerifier({ secret: config.turnstile.secretKey, fetch })
@@ -151,16 +162,19 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 				secure: config.siteUrl.startsWith('https://')
 			}),
 			orders,
-			fulfilment: createFulfilmentService({
-				db,
-				orders,
-				entitlements,
-				auth: users,
-				mailer,
-				log: logger,
-				siteUrl: config.siteUrl
-			})
+			fulfilment
 		},
+		admin: createAdminService({
+			db,
+			auth,
+			users,
+			entitlements,
+			orders,
+			fulfilment,
+			catalog,
+			gateway: payments,
+			log: logger
+		}),
 		googleEnabled: config.google !== undefined,
 		cronSecret: config.cronSecret
 	};

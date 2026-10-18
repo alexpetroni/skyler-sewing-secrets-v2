@@ -1,3 +1,4 @@
+import { createAdminService } from '../../src/lib/server/modules/admin/index.ts';
 import { createAuth, createAuthService } from '../../src/lib/server/modules/auth/index.ts';
 import type { Db } from '../../src/lib/server/db/index.ts';
 import { createFakeLogger, type LogEntry } from '../../src/lib/server/platform/fakes/logger.ts';
@@ -98,6 +99,17 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		now: overrides.now
 	});
 
+	const fulfilment = createFulfilmentService({
+		db,
+		orders,
+		entitlements,
+		auth: users,
+		mailer,
+		log: logger,
+		siteUrl: TEST_SITE_URL,
+		now: overrides.now
+	});
+
 	return {
 		db,
 		auth,
@@ -128,17 +140,20 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 			cart,
 			cartCookie: createCartCookie({ secret: TEST_AUTH_SECRET, secure: false }),
 			orders,
-			fulfilment: createFulfilmentService({
-				db,
-				orders,
-				entitlements,
-				auth: users,
-				mailer,
-				log: logger,
-				siteUrl: TEST_SITE_URL,
-				now: overrides.now
-			})
+			fulfilment
 		},
+		admin: createAdminService({
+			db,
+			auth,
+			users,
+			entitlements,
+			orders,
+			fulfilment,
+			catalog,
+			gateway: payments,
+			log: logger,
+			now: overrides.now
+		}),
 		googleEnabled: google !== undefined,
 		cronSecret: TEST_CRON_SECRET,
 		resetEmails,

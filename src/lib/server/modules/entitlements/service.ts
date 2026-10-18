@@ -19,6 +19,8 @@ export interface GrantInput {
 	orderItemId?: string | null;
 	/** The admin behind a manual grant; recorded as `granted_by` and in `audit_log`. */
 	actorId?: string;
+	/** Why the admin granted it; kept in the audit row. */
+	reason?: string;
 	tx?: Tx;
 }
 
@@ -136,7 +138,7 @@ export function createEntitlementService({
 	}
 
 	return {
-		grant: ({ userId, productId, source, orderItemId = null, actorId, tx }) =>
+		grant: ({ userId, productId, source, orderItemId = null, actorId, reason, tx }) =>
 			inTx(tx, async (tx) => {
 				const [existing] = await tx
 					.select()
@@ -166,7 +168,8 @@ export function createEntitlementService({
 				await writeAudit(tx, actorId, 'entitlement.grant', created, null, {
 					user_id: userId,
 					product_id: productId,
-					source
+					source,
+					...(reason ? { reason } : {})
 				});
 				await syncIsMember(userId, tx);
 				log.info('entitlement granted', { userId, productId, source });
