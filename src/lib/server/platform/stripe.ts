@@ -29,6 +29,8 @@ export type CheckoutStatus = 'open' | 'complete' | 'expired';
 
 export interface CheckoutSessionView {
 	id: string;
+	/** The hosted payment page; null once the session is complete or expired. */
+	url: string | null;
 	paymentStatus: CheckoutPaymentStatus;
 	status: CheckoutStatus | null;
 	amountTotal: number | null;
@@ -149,6 +151,7 @@ function toCheckoutStatus(value: string | null): CheckoutStatus | null {
 export function normaliseSession(session: StripeSessionLike): CheckoutSessionView {
 	return {
 		id: session.id,
+		url: session.url ?? null,
 		paymentStatus: toPaymentStatus(session.payment_status),
 		status: toCheckoutStatus(session.status),
 		amountTotal: session.amount_total,

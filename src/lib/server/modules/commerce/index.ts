@@ -42,6 +42,22 @@ export {
 	type QuoteLine
 } from './pricing.ts';
 export {
+	createOrderService,
+	EmptyCartError,
+	ORDER_TTL_MS,
+	PromoInvalidError,
+	type CreateOrderServiceDeps,
+	type CreatePendingOrderInput,
+	type Order,
+	type OrderItem,
+	type OrderService,
+	type OrderStatus,
+	type OrderSummary,
+	type OrderSummaryItem,
+	type OrderWithItems,
+	type StartCheckoutInput
+} from './orders.ts';
+export {
 	createPromoService,
 	normalizeCode,
 	PromoRejectedError,
@@ -63,4 +79,5 @@ export interface CommerceServices {
 	promo: import('./promo.ts').PromoService;
 	cart: import('./cart.ts').CartService;
 	cartCookie: import('./cart.ts').CartCookie;
+	orders: import('./orders.ts').OrderService;
 }

@@ -152,6 +152,7 @@ describe('createStripeGateway: input → Stripe params mapping', () => {
 		expect(calls.retrieve).toEqual(['cs_test_123']);
 		expect(view).toEqual({
 			id: 'cs_test_123',
+			url: 'https://checkout.stripe.com/c/pay/cs_test_123',
 			paymentStatus: 'paid',
 			status: 'complete',
 			amountTotal: 5720,

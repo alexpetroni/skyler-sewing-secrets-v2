@@ -14,6 +14,7 @@ import { createCatalogService } from '../../src/lib/server/modules/catalog/index
 import {
 	createCartCookie,
 	createCartService,
+	createOrderService,
 	createPromoService,
 	pricing
 } from '../../src/lib/server/modules/commerce/index.ts';
@@ -78,6 +79,8 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 	const catalog = createCatalogService({ db, content, log: logger });
 	const entitlements = createEntitlementService({ db, log: logger });
 	const promo = createPromoService({ db, log: logger });
+	const cart = createCartService({ catalog, entitlements, promo, log: logger });
+	const payments = createFakePaymentGateway();
 	const mailer = createFakeMailer();
 	const limiter = createRequestLimiter({ db, now: overrides.now });
 	const turnstile = overrides.turnstile;
@@ -87,7 +90,7 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		auth,
 		users: createAuthService({ db }),
 		logger,
-		payments: createFakePaymentGateway(),
+		payments,
 		videoHost,
 		mailer,
 		limiter,
@@ -109,8 +112,18 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		commerce: {
 			pricing,
 			promo,
-			cart: createCartService({ catalog, entitlements, promo, log: logger }),
-			cartCookie: createCartCookie({ secret: TEST_AUTH_SECRET, secure: false })
+			cart,
+			cartCookie: createCartCookie({ secret: TEST_AUTH_SECRET, secure: false }),
+			orders: createOrderService({
+				db,
+				cart,
+				promo,
+				catalog,
+				gateway: payments,
+				log: logger,
+				siteUrl: TEST_SITE_URL,
+				now: overrides.now
+			})
 		},
 		googleEnabled: google !== undefined,
 		resetEmails,

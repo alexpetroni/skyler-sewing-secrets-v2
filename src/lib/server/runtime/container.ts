@@ -9,6 +9,7 @@ import { createCatalogService, type CatalogService } from '#lib/server/modules/c
 import {
 	createCartCookie,
 	createCartService,
+	createOrderService,
 	createPromoService,
 	pricing,
 	type CommerceServices
@@ -89,10 +90,15 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		fetch
 	});
 
+	const payments = createStripeGateway({
+		secretKey: config.stripe.secretKey,
+		webhookSecret: config.stripe.webhookSecret
+	});
 	const content = createContentService({ db, log: logger });
 	const catalog = createCatalogService({ db, content, log: logger });
 	const entitlements = createEntitlementService({ db, log: logger });
 	const promo = createPromoService({ db, log: logger });
+	const cart = createCartService({ catalog, entitlements, promo, log: logger });
 	const limiter = createRequestLimiter({ db });
 	// Built only when configured; the marketing service skips the check otherwise.
 	const turnstile = config.turnstile
@@ -104,10 +110,7 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		auth,
 		users: createAuthService({ db }),
 		logger,
-		payments: createStripeGateway({
-			secretKey: config.stripe.secretKey,
-			webhookSecret: config.stripe.webhookSecret
-		}),
+		payments,
 		videoHost,
 		mailer,
 		limiter,
@@ -128,11 +131,20 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		commerce: {
 			pricing,
 			promo,
-			cart: createCartService({ catalog, entitlements, promo, log: logger }),
+			cart,
 			// `Secure` whenever the site is served over https (not on http://localhost).
 			cartCookie: createCartCookie({
 				secret: config.betterAuthSecret,
 				secure: config.siteUrl.startsWith('https://')
+			}),
+			orders: createOrderService({
+				db,
+				cart,
+				promo,
+				catalog,
+				gateway: payments,
+				log: logger,
+				siteUrl: config.siteUrl
 			})
 		},
 		googleEnabled: config.google !== undefined
