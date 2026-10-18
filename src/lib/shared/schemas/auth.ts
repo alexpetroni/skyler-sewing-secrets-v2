@@ -57,3 +57,20 @@ export const profileNameSchema = v.object({
 		v.maxLength(100, 'Name must be 100 characters or fewer')
 	)
 });
+
+/** The account step of a signed-out checkout, with the legacy limits and messages. */
+export const checkoutAccountSchema = v.object({
+	fullName: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.minLength(2, 'Please enter your full name'),
+		v.maxLength(100, 'Full name must be 100 characters or fewer')
+	),
+	email: v.pipe(emailField, v.toLowerCase()),
+	password: v.pipe(
+		v.optional(v.string(), ''),
+		v.nonEmpty('Password is required'),
+		v.minLength(8, 'Password must be at least 8 characters')
+	)
+});
+export type CheckoutAccountInput = v.InferOutput<typeof checkoutAccountSchema>;
