@@ -57,7 +57,7 @@ export interface MediaService {
 		perPage: number;
 		search?: string;
 	}): Promise<{ items: LibraryVideo[]; total: number }>;
-	/** Imports (or refreshes) one Bunny video into `media_assets`. */
+	/** Imports (or refreshes) one Bunny video; `VIDEO_NOT_FOUND` when Bunny no longer has it. */
 	importVideo(videoId: string, actorId?: string): Promise<MediaAsset>;
 	/** Refreshes one asset from Bunny; null when no asset holds that video. */
 	syncAsset(videoId: string): Promise<MediaAsset | null>;
@@ -236,7 +236,15 @@ export function createMediaService({ db, videoHost, log }: CreateMediaServiceDep
 		},
 
 		async importVideo(videoId, actorId) {
-			const video = await videoHost.getVideo(videoId);
+			let video: BunnyVideo;
+			try {
+				video = await videoHost.getVideo(videoId);
+			} catch (err) {
+				if (err instanceof VideoHostError && err.status === 404) {
+					throw new DomainError('VIDEO_NOT_FOUND', 'This video is no longer in the Bunny library');
+				}
+				throw err;
+			}
 			return withTx(db, async (tx) => {
 				const [asset] = await upsertVideos(tx, [video]);
 				await writeAudit(tx, actorId, {

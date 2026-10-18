@@ -302,6 +302,8 @@ describe('createMediaService', () => {
 			const again = await media.importVideo(videoId);
 			expect(again.id).toBe(imported.id);
 			expect(await db().select().from(media_assets)).toHaveLength(2);
+
+			await expectDomainError(media.importVideo('not-in-bunny'), 'VIDEO_NOT_FOUND');
 		});
 	});
 
