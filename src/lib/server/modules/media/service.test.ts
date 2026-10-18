@@ -9,7 +9,7 @@ import { UPLOAD_TICKET_TTL_SECONDS } from './service.ts';
 
 vi.mock('$app/server', () => ({ getRequestEvent: () => null }));
 
-const { media_assets, modules, lessons } = schema;
+const { audit_log, media_assets, modules, lessons, webhook_events } = schema;
 
 describe('createMediaService', () => {
 	const { db } = useTestDb();
@@ -277,6 +277,161 @@ describe('createMediaService', () => {
 
 			expect(videoHost.thumbnailTimes.get(asset.video_id)).toBe(42);
 			await expectDomainError(media.setThumbnail(crypto.randomUUID(), 1), 'MEDIA_NOT_FOUND');
+		});
+	});
+
+	describe('browseLibrary and importVideo', () => {
+		it('lists a library page without importing it, then imports one video', async () => {
+			const { media, videoHost } = setup();
+			const known = await media.createUpload({ title: 'Zip known' });
+			const { videoId } = await videoHost.createVideo('Zip new');
+			await videoHost.createVideo('Hems');
+
+			const page = await media.browseLibrary({ page: 1, perPage: 10, search: 'zip' });
+			expect(page.total).toBe(2);
+			expect(page.items.map((video) => [video.title, video.assetId])).toEqual([
+				['Zip new', null],
+				['Zip known', known.asset.id]
+			]);
+			expect(await db().select().from(media_assets)).toHaveLength(1);
+
+			videoHost.finishEncoding(videoId, { lengthSeconds: 300 });
+			const imported = await media.importVideo(videoId);
+			expect(imported).toMatchObject({ video_id: videoId, status: 'ready', duration_seconds: 300 });
+			// Importing again refreshes the same row.
+			const again = await media.importVideo(videoId);
+			expect(again.id).toBe(imported.id);
+			expect(await db().select().from(media_assets)).toHaveLength(2);
+		});
+	});
+
+	describe('detail', () => {
+		it('returns the asset with the lesson that plays it, or null', async () => {
+			const { media } = setup();
+			const { asset } = await media.createUpload({ title: 'Linked' });
+			expect((await media.detail(asset.id))?.linkedLessonId).toBeNull();
+			const lessonId = await insertLesson(asset.id);
+			expect(await media.detail(asset.id)).toMatchObject({
+				id: asset.id,
+				linkedLessonId: lessonId
+			});
+			expect(await media.detail(crypto.randomUUID())).toBeNull();
+		});
+	});
+
+	describe('receiveWebhook', () => {
+		it('refuses another library with WRONG_LIBRARY and records nothing', async () => {
+			const { media } = setup();
+			const { asset } = await media.createUpload({ title: 'Collars' });
+			await expectDomainError(
+				media.receiveWebhook({ libraryId: '999', videoGuid: asset.video_id, status: 4 }),
+				'WRONG_LIBRARY'
+			);
+			expect(await db().select().from(webhook_events)).toHaveLength(0);
+		});
+
+		it('records the delivery once, syncs from the host every time and flags duplicates', async () => {
+			const { media, videoHost } = setup();
+			const { asset } = await media.createUpload({ title: 'Collars' });
+			videoHost.videos.set(asset.video_id, {
+				...videoHost.videos.get(asset.video_id)!,
+				status: 'processing'
+			});
+
+			// The payload says finished (4); Bunny's API still says processing.
+			const first = await media.receiveWebhook({
+				libraryId: videoHost.libraryId,
+				videoGuid: asset.video_id,
+				status: 4
+			});
+			expect(first).toMatchObject({ duplicate: false, asset: { status: 'processing' } });
+
+			videoHost.finishEncoding(asset.video_id);
+			const second = await media.receiveWebhook({
+				libraryId: videoHost.libraryId,
+				videoGuid: asset.video_id,
+				status: 4
+			});
+			expect(second).toMatchObject({ duplicate: true, asset: { status: 'ready' } });
+
+			const events = await db().select().from(webhook_events);
+			expect(events).toHaveLength(1);
+			expect(events[0]).toMatchObject({
+				provider: 'bunny',
+				event_id: `${asset.video_id}:4`,
+				type: 'video.status.4',
+				reference: asset.video_id,
+				error: null
+			});
+			expect(events[0].processed_at).not.toBeNull();
+		});
+
+		it('treats a video already deleted in Bunny as nothing to sync', async () => {
+			const { media, videoHost } = setup();
+			const { asset } = await media.createUpload({ title: 'Gone' });
+			videoHost.videos.delete(asset.video_id);
+
+			const result = await media.receiveWebhook({
+				libraryId: videoHost.libraryId,
+				videoGuid: asset.video_id,
+				status: 5
+			});
+			expect(result).toEqual({ asset: null, duplicate: false });
+		});
+	});
+
+	describe('audit', () => {
+		it('writes audit_log rows for admin media changes when an actor is given', async () => {
+			const services = setup();
+			const { media, videoHost } = services;
+			const actorId = await services.users.createCredentialUser({
+				email: 'owner@example.com',
+				password: 'a-good-password'
+			});
+
+			const { asset } = await media.createUpload({ title: 'Audited', actorId });
+			await media.setThumbnail(asset.id, 12, actorId);
+			const { videoId } = await videoHost.createVideo('Imported');
+			const imported = await media.importVideo(videoId, actorId);
+			await media.importFromLibrary({ page: 1, perPage: 10, actorId });
+			await media.syncProcessing({ olderThanMinutes: 0, actorId });
+			await media.remove(asset.id, actorId);
+
+			const rows = await db()
+				.select({ action: audit_log.action, entityId: audit_log.entity_id })
+				.from(audit_log)
+				.where(eq(audit_log.actor_id, actorId))
+				.orderBy(audit_log.created_at, audit_log.action);
+			expect(rows.map((row) => row.action).sort()).toEqual(
+				[
+					'media.delete',
+					'media.import',
+					'media.import',
+					'media.import',
+					'media.set_thumbnail',
+					'media.sync',
+					'media.upload'
+				].sort()
+			);
+			expect(
+				rows
+					.filter((row) => row.entityId === asset.id)
+					.map((row) => row.action)
+					.sort()
+			).toEqual(['media.delete', 'media.import', 'media.set_thumbnail', 'media.upload']);
+			expect(rows.filter((row) => row.entityId === imported.id)).toHaveLength(2);
+		});
+
+		it('writes no audit row when removal is refused', async () => {
+			const services = setup();
+			const actorId = await services.users.createCredentialUser({
+				email: 'owner@example.com',
+				password: 'a-good-password'
+			});
+			const { asset } = await services.media.createUpload({ title: 'In use' });
+			await insertLesson(asset.id);
+			await expectDomainError(services.media.remove(asset.id, actorId), 'MEDIA_IN_USE');
+			expect(await db().select().from(audit_log)).toEqual([]);
 		});
 	});
 });
