@@ -6,6 +6,12 @@ import {
 	type AuthService
 } from '#lib/server/modules/auth/index.ts';
 import { createCatalogService, type CatalogService } from '#lib/server/modules/catalog/index.ts';
+import {
+	createCartService,
+	createPromoService,
+	pricing,
+	type CommerceServices
+} from '#lib/server/modules/commerce/index.ts';
 import { createContentService, type ContentService } from '#lib/server/modules/content/index.ts';
 import {
 	createEntitlementService,
@@ -50,6 +56,7 @@ export interface Services {
 	catalog: CatalogService;
 	entitlements: EntitlementService;
 	marketing: MarketingService;
+	commerce: CommerceServices;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
 }
@@ -83,6 +90,8 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 
 	const content = createContentService({ db, log: logger });
 	const catalog = createCatalogService({ db, content, log: logger });
+	const entitlements = createEntitlementService({ db, log: logger });
+	const promo = createPromoService({ db, log: logger });
 	const limiter = createRequestLimiter({ db });
 	// Built only when configured; the marketing service skips the check otherwise.
 	const turnstile = config.turnstile
@@ -104,7 +113,7 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		media: createMediaService({ db, videoHost, log: logger }),
 		content,
 		catalog,
-		entitlements: createEntitlementService({ db, log: logger }),
+		entitlements,
 		marketing: createMarketingService({
 			db,
 			mailer,
@@ -115,6 +124,11 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 			contactEmail: config.contactEmail,
 			verifyTurnstile: turnstile ? (token, ip) => turnstile.verify(token, ip) : undefined
 		}),
+		commerce: {
+			pricing,
+			promo,
+			cart: createCartService({ catalog, entitlements, promo, log: logger })
+		},
 		googleEnabled: config.google !== undefined
 	};
 }

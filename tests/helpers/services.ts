@@ -11,6 +11,11 @@ import {
 	type FakeVideoHost
 } from '../../src/lib/server/platform/fakes/video-host.ts';
 import { createCatalogService } from '../../src/lib/server/modules/catalog/index.ts';
+import {
+	createCartService,
+	createPromoService,
+	pricing
+} from '../../src/lib/server/modules/commerce/index.ts';
 import { createContentService } from '../../src/lib/server/modules/content/index.ts';
 import { createEntitlementService } from '../../src/lib/server/modules/entitlements/index.ts';
 import { createMarketingService } from '../../src/lib/server/modules/marketing/index.ts';
@@ -70,6 +75,8 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 
 	const content = createContentService({ db, log: logger });
 	const catalog = createCatalogService({ db, content, log: logger });
+	const entitlements = createEntitlementService({ db, log: logger });
+	const promo = createPromoService({ db, log: logger });
 	const mailer = createFakeMailer();
 	const limiter = createRequestLimiter({ db, now: overrides.now });
 	const turnstile = overrides.turnstile;
@@ -86,7 +93,7 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		media: createMediaService({ db, videoHost, log: logger }),
 		content,
 		catalog,
-		entitlements: createEntitlementService({ db, log: logger }),
+		entitlements,
 		marketing: createMarketingService({
 			db,
 			mailer,
@@ -98,6 +105,11 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 			verifyTurnstile: turnstile ? (token, ip) => turnstile.verify(token, ip) : undefined,
 			now: overrides.now
 		}),
+		commerce: {
+			pricing,
+			promo,
+			cart: createCartService({ catalog, entitlements, promo, log: logger })
+		},
 		googleEnabled: google !== undefined,
 		resetEmails,
 		logEntries: logger.entries
