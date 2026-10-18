@@ -63,3 +63,9 @@ export {
 	type TurnstileVerifier,
 	type TurnstileVerifierOptions
 } from './turnstile.ts';
+export {
+	createRevalidator,
+	REVALIDATE_HEADER,
+	type Revalidator,
+	type RevalidatorOptions
+} from './revalidate.ts';
