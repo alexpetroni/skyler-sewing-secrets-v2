@@ -47,3 +47,13 @@ export function fieldErrors(issues: readonly v.BaseIssue<unknown>[]): Record<str
 	}
 	return errors;
 }
+
+/** The profile form, with the legacy limits and messages. */
+export const profileNameSchema = v.object({
+	full_name: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.minLength(2, 'Name must be at least 2 characters'),
+		v.maxLength(100, 'Name must be 100 characters or fewer')
+	)
+});

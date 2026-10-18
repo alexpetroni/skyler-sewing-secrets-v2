@@ -213,3 +213,190 @@ export async function lessonPage(
 		canTrackProgress: !!locals.user && !!locals.profile && !locals.profile.is_suspended
 	};
 }
+
+/** The published flagship for the outline pages' calls to action. */
+async function flagshipLink(
+	catalog: CatalogService
+): Promise<{ slug: string; title: string } | null> {
+	const courses = await catalog.listPublished({ kind: 'course' });
+	const flagship = courses.find((product) => product.access_scope === 'all');
+	return flagship ? { slug: flagship.slug, title: flagship.title } : null;
+}
+
+/** The public course outline with the viewer's lock state and progress per lesson. */
+export async function courseOutlinePage(locals: App.Locals) {
+	const { content, catalog } = locals.services;
+	const [outline, ctx, progress, flagship] = await Promise.all([
+		content.outline(),
+		accessContext(locals),
+		progressByLesson(locals),
+		flagshipLink(catalog)
+	]);
+	const modules = outline.modules.map((module) => ({
+		id: module.id,
+		slug: module.slug,
+		title: module.title,
+		description: module.description,
+		isBonus: module.isBonus,
+		lessons: module.lessons.map((lesson) => ({
+			id: lesson.id,
+			durationSeconds: lesson.durationSeconds,
+			isFreePreview: lesson.isFreePreview,
+			lockState: lockState(ctx, lesson),
+			completed: progress.get(lesson.id)?.completed ?? false
+		})),
+		owned: module.lessons.length > 0 && module.lessons.every((lesson) => ownsLesson(ctx, lesson))
+	}));
+	return {
+		modules,
+		totals: outline.totals,
+		flagship,
+		ownsCourse: modules.length > 0 && modules.every((module) => module.owned)
+	};
+}
+
+/** One published module's lessons with lock state and progress; null when there is none. */
+export async function modulePage(locals: App.Locals, slug: string) {
+	const { content, catalog } = locals.services;
+	const module = await content.modules.getBySlug(slug, { publishedOnly: true });
+	if (!module) return null;
+	const [rows, outline, ctx, progress, flagship] = await Promise.all([
+		content.lessons.listByModule(module.id),
+		content.outline(),
+		accessContext(locals),
+		progressByLesson(locals),
+		flagshipLink(catalog)
+	]);
+	// Durations come with the outline (course modules); other collections show none.
+	const durations = new Map(
+		outline.modules.flatMap((entry) =>
+			entry.lessons.map((lesson) => [lesson.id, lesson.durationSeconds] as const)
+		)
+	);
+	const lessons = rows
+		.filter((lesson) => lesson.is_published)
+		.map((lesson) => {
+			const ref = { id: lesson.id, isFreePreview: lesson.is_free_preview };
+			return {
+				id: lesson.id,
+				title: lesson.title,
+				description: lesson.description,
+				href: lessonHref(module.slug, lesson.slug),
+				durationSeconds: durations.get(lesson.id) ?? null,
+				isFreePreview: lesson.is_free_preview,
+				lockState: lockState(ctx, ref),
+				completed: progress.get(lesson.id)?.completed ?? false,
+				owned: ownsLesson(ctx, ref)
+			};
+		});
+	return {
+		module: {
+			slug: module.slug,
+			title: module.title,
+			description: module.description,
+			thumbnailUrl: module.thumbnail_url,
+			orderIndex: module.order_index,
+			isBonus: module.is_bonus
+		},
+		lessons,
+		owned: lessons.length > 0 && lessons.every((lesson) => lesson.owned),
+		flagship
+	};
+}
+
+const CONTINUE_WATCHING = 3;
+const RECENTLY_COMPLETED = 5;
+
+/**
+ * Everything the user owns, grouped: the flagship as the course outline with
+ * per-module progress, bundles and singles with their lessons and progress.
+ */
+export async function libraryPage(locals: App.Locals, userId: string) {
+	const { content, catalog, entitlements } = locals.services;
+	const [owned, progress, continueWatching, recentlyCompleted] = await Promise.all([
+		entitlements.listForUser(userId),
+		progressByLesson(locals),
+		content.progress.continueWatching(userId, CONTINUE_WATCHING),
+		content.progress.recentlyCompleted(userId, RECENTLY_COMPLETED)
+	]);
+
+	// Lesson id → duration, for every lesson listed; drives the summary numbers.
+	const listed = new Map<string, number | null>();
+
+	const courseEntitlement = owned.find((entitlement) => entitlement.product.kind === 'course');
+	let course = null;
+	if (courseEntitlement) {
+		const [outline, summary] = await Promise.all([
+			content.outline(),
+			content.progress.summary(userId)
+		]);
+		for (const lesson of outline.modules.flatMap((module) => module.lessons)) {
+			listed.set(lesson.id, lesson.durationSeconds);
+		}
+		course = {
+			slug: courseEntitlement.product.slug,
+			title: courseEntitlement.product.title,
+			grantedAt: courseEntitlement.granted_at,
+			modules: summary.perModule.map((module) => ({
+				slug: module.slug,
+				title: module.title,
+				totalLessons: module.totalLessons,
+				completedLessons: module.completedLessons
+			}))
+		};
+	}
+
+	const collections = await Promise.all(
+		owned
+			.filter((entitlement) => entitlement.product.kind !== 'course')
+			.map(async (entitlement) => {
+				const lessons = (await catalog.productLessons(entitlement.product_id)).filter(
+					(lesson) => lesson.isPublished
+				);
+				for (const lesson of lessons) listed.set(lesson.id, lesson.durationSeconds);
+				return {
+					slug: entitlement.product.slug,
+					title: entitlement.product.title,
+					kind: entitlement.product.kind,
+					grantedAt: entitlement.granted_at,
+					lessons: lessons.map((lesson) => ({
+						id: lesson.id,
+						title: lesson.title,
+						href: lessonHref(lesson.moduleSlug, lesson.slug),
+						durationSeconds: lesson.durationSeconds,
+						completed: progress.get(lesson.id)?.completed ?? false
+					}))
+				};
+			})
+	);
+
+	let completedLessons = 0;
+	let watchedSeconds = 0;
+	for (const [lessonId, duration] of listed) {
+		const row = progress.get(lessonId);
+		if (!row) continue;
+		if (row.completed) completedLessons += 1;
+		// A completed lesson counts in full; otherwise up to the saved position.
+		watchedSeconds += row.completed
+			? (duration ?? 0)
+			: Math.min(row.last_position_seconds, duration ?? 0);
+	}
+
+	const withHref = (lesson: (typeof continueWatching)[number]) => ({
+		...lesson,
+		href: lessonHref(lesson.moduleSlug, lesson.lessonSlug)
+	});
+
+	return {
+		course,
+		collections,
+		continueWatching: continueWatching.map(withHref),
+		recentlyCompleted: recentlyCompleted.map(withHref),
+		summary: {
+			products: owned.length,
+			lessons: listed.size,
+			completedLessons,
+			minutesWatched: Math.floor(watchedSeconds / 60)
+		}
+	};
+}

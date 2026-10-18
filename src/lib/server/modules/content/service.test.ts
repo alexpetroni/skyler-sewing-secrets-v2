@@ -549,6 +549,21 @@ describe('createContentService', () => {
 			await expectDomainError(content.resources.remove(pattern.id), 'RESOURCE_NOT_FOUND');
 		});
 
+		it('finds a resource by id together with its lesson', async () => {
+			const { content } = setup();
+			const lesson = await content.lessons.create(lessonInput({ isFreePreview: true }));
+			const resource = await content.resources.add({
+				lessonId: lesson.id,
+				title: 'Pattern',
+				fileUrl: 'https://files.example.com/pattern.pdf'
+			});
+
+			const found = await content.resources.getById(resource.id);
+			expect(found?.resource.file_url).toBe('https://files.example.com/pattern.pdf');
+			expect(found?.lesson).toMatchObject({ id: lesson.id, is_free_preview: true });
+			expect(await content.resources.getById(crypto.randomUUID())).toBeNull();
+		});
+
 		it('refuses non-https URLs and unknown lessons', async () => {
 			const { content } = setup();
 			const lesson = await content.lessons.create(lessonInput());

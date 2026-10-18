@@ -137,6 +137,8 @@ export interface ContentService {
 	outline(): Promise<CourseOutline>;
 	resources: {
 		listForLesson(lessonId: string): Promise<LessonResource[]>;
+		/** A resource with the lesson it belongs to, for the download access check. */
+		getById(id: string): Promise<{ resource: LessonResource; lesson: Lesson } | null>;
 		add(input: AddResourceInput): Promise<LessonResource>;
 		remove(id: string): Promise<void>;
 	};
@@ -597,6 +599,16 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 					.from(lesson_resources)
 					.where(eq(lesson_resources.lesson_id, lessonId))
 					.orderBy(asc(lesson_resources.created_at), asc(lesson_resources.id));
+			},
+
+			async getById(id) {
+				const [row] = await db
+					.select({ resource: lesson_resources, lesson: lessons })
+					.from(lesson_resources)
+					.innerJoin(lessons, eq(lessons.id, lesson_resources.lesson_id))
+					.where(eq(lesson_resources.id, id))
+					.limit(1);
+				return row ?? null;
 			},
 
 			async add(input) {

@@ -383,6 +383,23 @@ describe('createCatalogService', () => {
 	});
 
 	describe('lesson lookups', () => {
+		it("productLessons lists an unpublished product's lessons in item order, drafts included", async () => {
+			const { catalog } = setup();
+			const first = await createLesson();
+			const draft = await createLesson({ isPublished: false });
+			const bundle = await catalog.create(productInput({ kind: 'bundle', slug: 'owned-pack' }));
+			await catalog.setItems(bundle.id, [draft, first]);
+
+			const items = await catalog.productLessons(bundle.id);
+			expect(items.map((lesson) => [lesson.id, lesson.isPublished])).toEqual([
+				[draft, false],
+				[first, true]
+			]);
+			await expect(catalog.productLessons(crypto.randomUUID())).rejects.toMatchObject({
+				code: 'PRODUCT_NOT_FOUND'
+			});
+		});
+
 		it('productsContainingLesson filters by published state', async () => {
 			const { catalog } = setup();
 			const lesson = await createLesson();

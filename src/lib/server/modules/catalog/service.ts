@@ -99,6 +99,8 @@ export interface CatalogService {
 	unpublish(id: string, actorId?: string): Promise<Product>;
 	/** Refuses with `PRODUCT_HAS_HISTORY` while orders or entitlements reference the product. */
 	remove(id: string, actorId?: string): Promise<void>;
+	/** The lessons a product unlocks, published or not; the outline for the flagship. */
+	productLessons(id: string): Promise<ProductLesson[]>;
 	productsContainingLesson(
 		lessonId: string,
 		params?: { publishedOnly?: boolean }
@@ -506,6 +508,10 @@ export function createCatalogService({
 				await writeAudit(tx, actorId, 'product.delete', id, before, null);
 				log.info('product deleted', { productId: id });
 			}),
+
+		async productLessons(id) {
+			return lessonsFor(await requireProduct(db, id));
+		},
 
 		async productsContainingLesson(lessonId, { publishedOnly = false } = {}) {
 			const filters: SQL[] = [eq(product_items.lesson_id, lessonId)];
