@@ -13,11 +13,15 @@ import {
 import { createCatalogService } from '../../src/lib/server/modules/catalog/index.ts';
 import { createContentService } from '../../src/lib/server/modules/content/index.ts';
 import { createEntitlementService } from '../../src/lib/server/modules/entitlements/index.ts';
+import { createMarketingService } from '../../src/lib/server/modules/marketing/index.ts';
 import { createMediaService } from '../../src/lib/server/modules/media/index.ts';
+import type { FakeTurnstile } from '../../src/lib/server/platform/fakes/turnstile.ts';
 import { createRequestLimiter } from '../../src/lib/server/platform/request-limits.ts';
 import type { Services } from '../../src/lib/server/runtime/container.ts';
 
 export const TEST_SITE_URL = 'http://localhost:5173';
+export const TEST_AUTH_SECRET = 'test-secret-that-is-long-enough-for-better-auth';
+export const TEST_CONTACT_EMAIL = 'inbox@skylersewingsecrets.test';
 
 export type { LogEntry };
 
@@ -34,6 +38,10 @@ export interface TestServiceOverrides {
 	googleEnabled?: boolean;
 	/** A video host prepared by the test (e.g. with a fixed clock). */
 	videoHost?: FakeVideoHost;
+	/** Turnstile "configured" with this fake; absent means not configured. */
+	turnstile?: FakeTurnstile;
+	/** Clock for the request limiter and the marketing service. */
+	now?: () => Date;
 }
 
 /**
@@ -52,7 +60,7 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 	const videoHost = overrides.videoHost ?? createFakeVideoHost();
 	const auth = createAuth({
 		db,
-		secret: 'test-secret-that-is-long-enough-for-better-auth',
+		secret: TEST_AUTH_SECRET,
 		baseURL: TEST_SITE_URL,
 		google,
 		sendPasswordReset: async (to, url) => {
@@ -62,6 +70,9 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 
 	const content = createContentService({ db, log: logger });
 	const catalog = createCatalogService({ db, content, log: logger });
+	const mailer = createFakeMailer();
+	const limiter = createRequestLimiter({ db, now: overrides.now });
+	const turnstile = overrides.turnstile;
 
 	return {
 		db,
@@ -70,12 +81,23 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		logger,
 		payments: createFakePaymentGateway(),
 		videoHost,
-		mailer: createFakeMailer(),
-		limiter: createRequestLimiter({ db }),
+		mailer,
+		limiter,
 		media: createMediaService({ db, videoHost, log: logger }),
 		content,
 		catalog,
 		entitlements: createEntitlementService({ db, log: logger }),
+		marketing: createMarketingService({
+			db,
+			mailer,
+			limiter,
+			log: logger,
+			siteUrl: TEST_SITE_URL,
+			secret: TEST_AUTH_SECRET,
+			contactEmail: TEST_CONTACT_EMAIL,
+			verifyTurnstile: turnstile ? (token, ip) => turnstile.verify(token, ip) : undefined,
+			now: overrides.now
+		}),
 		googleEnabled: google !== undefined,
 		resetEmails,
 		logEntries: logger.entries

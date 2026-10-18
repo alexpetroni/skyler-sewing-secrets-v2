@@ -11,7 +11,11 @@ import {
 	createEntitlementService,
 	type EntitlementService
 } from '#lib/server/modules/entitlements/index.ts';
-import { passwordResetEmail } from '#lib/server/modules/marketing/index.ts';
+import {
+	createMarketingService,
+	passwordResetEmail,
+	type MarketingService
+} from '#lib/server/modules/marketing/index.ts';
 import { createMediaService, type MediaService } from '#lib/server/modules/media/index.ts';
 import {
 	createBunnyVideoHost,
@@ -19,6 +23,7 @@ import {
 	createRequestLimiter,
 	createResendMailer,
 	createStripeGateway,
+	createTurnstileVerifier,
 	type Logger,
 	type Mailer,
 	type PaymentGateway,
@@ -44,6 +49,7 @@ export interface Services {
 	content: ContentService;
 	catalog: CatalogService;
 	entitlements: EntitlementService;
+	marketing: MarketingService;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
 }
@@ -77,6 +83,11 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 
 	const content = createContentService({ db, log: logger });
 	const catalog = createCatalogService({ db, content, log: logger });
+	const limiter = createRequestLimiter({ db });
+	// Built only when configured; the marketing service skips the check otherwise.
+	const turnstile = config.turnstile
+		? createTurnstileVerifier({ secret: config.turnstile.secretKey, fetch })
+		: undefined;
 
 	return {
 		db,
@@ -89,11 +100,21 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		}),
 		videoHost,
 		mailer,
-		limiter: createRequestLimiter({ db }),
+		limiter,
 		media: createMediaService({ db, videoHost, log: logger }),
 		content,
 		catalog,
 		entitlements: createEntitlementService({ db, log: logger }),
+		marketing: createMarketingService({
+			db,
+			mailer,
+			limiter,
+			log: logger,
+			siteUrl: config.siteUrl,
+			secret: config.betterAuthSecret,
+			contactEmail: config.contactEmail,
+			verifyTurnstile: turnstile ? (token, ip) => turnstile.verify(token, ip) : undefined
+		}),
 		googleEnabled: config.google !== undefined
 	};
 }

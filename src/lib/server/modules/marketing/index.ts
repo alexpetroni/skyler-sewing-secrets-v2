@@ -12,3 +12,36 @@ export {
 	type EmailContent,
 	type OrderConfirmationInput
 } from './emails.ts';
+export {
+	createMarketingService,
+	type BlogPost,
+	type BlogPostInput,
+	type BlogPostSummary,
+	type BlogPostView,
+	type ContactSubmission,
+	type CreateMarketingServiceDeps,
+	type FaqGroup,
+	type FaqInput,
+	type FaqItem,
+	type FaqView,
+	type MarketingService,
+	type Testimonial,
+	type TestimonialInput,
+	type TestimonialSubmission
+} from './service.ts';
+export {
+	createNewsletterService,
+	csvCell,
+	CSV_HEADER,
+	toCsv,
+	type NewsletterService,
+	type Subscriber
+} from './newsletter.ts';
+export {
+	SCREEN_RULES,
+	type ScreenInput,
+	type ScreenResult,
+	type ScreenScope,
+	type VerifyTurnstile
+} from './screen.ts';
+export { MAINTENANCE_CACHE_MS, MAINTENANCE_KEY, type SettingsService } from './settings.ts';
