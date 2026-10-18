@@ -303,9 +303,6 @@ export const testimonialSchema = v.object({
 	isFeatured: v.optional(v.boolean(), false)
 });
 
-/** The moderation list's position field. */
-export const testimonialOrderSchema = v.object({ id: idSchema, orderIndex: orderIndexField });
-
 export const subscriberStatuses = ['confirmed', 'unconfirmed', 'unsubscribed'] as const;
 export type SubscriberStatus = (typeof subscriberStatuses)[number];
 

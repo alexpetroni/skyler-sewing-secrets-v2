@@ -83,6 +83,12 @@ export interface TestimonialInput {
 	country: string;
 }
 
+/** A testimonial in the admin moderation list. */
+export interface TestimonialRow extends Testimonial {
+	/** The member who submitted it; null when the admin added it. */
+	member: { id: string; email: string; fullName: string | null } | null;
+}
+
 export interface MarketingService {
 	/** Anti-abuse gate for the public newsletter and contact submissions. */
 	screen(input: ScreenInput): Promise<ScreenResult>;
@@ -126,9 +132,20 @@ export interface MarketingService {
 		 * unpublished; refuses with `REVIEW_PUBLISHED` once it is published.
 		 */
 		submit(input: TestimonialSubmission): Promise<Testimonial>;
-		listAll(): Promise<Testimonial[]>;
+		/** The moderation list: unpublished (pending) first, then in display order. */
+		listAll(): Promise<TestimonialRow[]>;
+		getById(id: string): Promise<TestimonialRow | null>;
+		/** An admin-added testimonial, created unpublished. */
+		create(input: TestimonialInput, actorId: string): Promise<Testimonial>;
 		update(id: string, input: TestimonialInput, actorId: string): Promise<Testimonial>;
 		setPublished(id: string, published: boolean, actorId: string): Promise<Testimonial>;
+		setFeatured(id: string, featured: boolean, actorId: string): Promise<Testimonial>;
+		/**
+		 * Swaps a published testimonial with its neighbour in the display order
+		 * and renumbers the published ones from 0; a no-op at either end.
+		 * Refuses an unpublished one with `TESTIMONIAL_NOT_PUBLISHED`.
+		 */
+		move(id: string, direction: 'up' | 'down', actorId: string): Promise<void>;
 		remove(id: string, actorId: string): Promise<void>;
 	};
 	contact: {
@@ -136,6 +153,8 @@ export interface MarketingService {
 		submit(input: ContactInput): Promise<{ id: string }>;
 		list(): Promise<ContactSubmission[]>;
 		markRead(id: string, actorId: string): Promise<ContactSubmission>;
+		/** Where notifications go (`CONTACT_EMAIL`), shown read-only in the admin. */
+		recipient: string;
 	};
 	newsletter: NewsletterService;
 	settings: SettingsService;
@@ -507,6 +526,53 @@ export function createMarketingService(deps: CreateMarketingServiceDeps): Market
 
 	const PUBLISHED_ORDER = [asc(testimonials.order_index), desc(testimonials.created_at)];
 
+	function testimonialRows(where?: SQL) {
+		return db
+			.select({
+				testimonial: testimonials,
+				profile: { email: profiles.email, fullName: profiles.full_name }
+			})
+			.from(testimonials)
+			.leftJoin(profiles, eq(profiles.id, testimonials.user_id))
+			.where(where)
+			.orderBy(asc(testimonials.is_published), ...PUBLISHED_ORDER)
+			.then((rows) =>
+				rows.map(({ testimonial, profile }): TestimonialRow => ({
+					...testimonial,
+					member:
+						testimonial.user_id && profile
+							? { id: testimonial.user_id, email: profile.email, fullName: profile.fullName }
+							: null
+				}))
+			);
+	}
+
+	type TestimonialFlags = Partial<
+		Pick<Testimonial, 'is_published' | 'is_featured' | 'order_index'>
+	>;
+
+	/** One moderation change, audited with the fields it touched. */
+	function patchTestimonial(id: string, patch: TestimonialFlags, action: string, actorId: string) {
+		return withTx(db, async (tx) => {
+			const before = await requireTestimonial(tx, id);
+			const [after] = await tx
+				.update(testimonials)
+				.set({ ...patch, updated_at: sql`now()` })
+				.where(eq(testimonials.id, id))
+				.returning();
+			const fields = Object.keys(patch) as Array<keyof TestimonialFlags>;
+			await writeAudit(tx, {
+				actorId,
+				action,
+				entity: 'testimonial',
+				entityId: id,
+				before: Object.fromEntries(fields.map((field) => [field, before[field]])),
+				after: Object.fromEntries(fields.map((field) => [field, after[field]]))
+			});
+			return after;
+		});
+	}
+
 	const testimonialsNs: MarketingService['testimonials'] = {
 		featured(limit) {
 			return db
@@ -583,9 +649,29 @@ export function createMarketingService(deps: CreateMarketingServiceDeps): Market
 				return created;
 			}),
 
-		listAll() {
-			return db.select().from(testimonials).orderBy(desc(testimonials.created_at));
+		listAll: () => testimonialRows(),
+
+		async getById(id) {
+			const [row] = await testimonialRows(eq(testimonials.id, id));
+			return row ?? null;
 		},
+
+		create: (input, actorId) =>
+			withTx(db, async (tx) => {
+				const [created] = await tx
+					.insert(testimonials)
+					.values({ ...testimonialValues(input), is_published: false })
+					.returning();
+				await writeAudit(tx, {
+					actorId,
+					action: 'testimonial.create',
+					entity: 'testimonial',
+					entityId: created.id,
+					before: null,
+					after: created
+				});
+				return created;
+			}),
 
 		update: (id, input, actorId) =>
 			withTx(db, async (tx) => {
@@ -607,22 +693,56 @@ export function createMarketingService(deps: CreateMarketingServiceDeps): Market
 			}),
 
 		setPublished: (id, published, actorId) =>
+			patchTestimonial(
+				id,
+				{ is_published: published },
+				published ? 'testimonial.publish' : 'testimonial.unpublish',
+				actorId
+			),
+
+		setFeatured: (id, featured, actorId) =>
+			patchTestimonial(
+				id,
+				{ is_featured: featured },
+				featured ? 'testimonial.feature' : 'testimonial.unfeature',
+				actorId
+			),
+
+		move: (id, direction, actorId) =>
 			withTx(db, async (tx) => {
-				const before = await requireTestimonial(tx, id);
-				const [after] = await tx
-					.update(testimonials)
-					.set({ is_published: published, updated_at: sql`now()` })
-					.where(eq(testimonials.id, id))
-					.returning();
+				const item = await requireTestimonial(tx, id);
+				if (!item.is_published) {
+					throw new DomainError(
+						'TESTIMONIAL_NOT_PUBLISHED',
+						'Publish the testimonial before changing its position'
+					);
+				}
+				// Locks the published rows so two moves cannot interleave.
+				const ordered = await tx
+					.select({ id: testimonials.id, orderIndex: testimonials.order_index })
+					.from(testimonials)
+					.where(eq(testimonials.is_published, true))
+					.orderBy(...PUBLISHED_ORDER)
+					.for('update');
+				const index = ordered.findIndex((row) => row.id === id);
+				const target = direction === 'up' ? index - 1 : index + 1;
+				if (target < 0 || target >= ordered.length) return;
+				const ids = ordered.map((row) => row.id);
+				[ids[index], ids[target]] = [ids[target], ids[index]];
+				for (const [position, rowId] of ids.entries()) {
+					await tx
+						.update(testimonials)
+						.set({ order_index: position, updated_at: sql`now()` })
+						.where(eq(testimonials.id, rowId));
+				}
 				await writeAudit(tx, {
 					actorId,
-					action: published ? 'testimonial.publish' : 'testimonial.unpublish',
+					action: 'testimonial.move',
 					entity: 'testimonial',
 					entityId: id,
-					before: { is_published: before.is_published },
-					after: { is_published: after.is_published }
+					before: { order_index: ordered[index].orderIndex },
+					after: { order_index: target, direction }
 				});
-				return after;
 			}),
 
 		remove: (id, actorId) =>
@@ -700,7 +820,9 @@ export function createMarketingService(deps: CreateMarketingServiceDeps): Market
 					after: { is_read: after.is_read }
 				});
 				return after;
-			})
+			}),
+
+		recipient: contactEmail
 	};
 
 	return {

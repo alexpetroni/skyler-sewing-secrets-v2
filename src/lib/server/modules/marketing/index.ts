@@ -27,15 +27,19 @@ export {
 	type MarketingService,
 	type Testimonial,
 	type TestimonialInput,
+	type TestimonialRow,
 	type TestimonialSubmission
 } from './service.ts';
 export {
 	createNewsletterService,
 	csvCell,
 	CSV_HEADER,
+	subscriberStatus,
 	toCsv,
 	type NewsletterService,
-	type Subscriber
+	type Subscriber,
+	type SubscriberList,
+	type SubscriberRow
 } from './newsletter.ts';
 export {
 	SCREEN_RULES,

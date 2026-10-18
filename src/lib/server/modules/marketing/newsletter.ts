@@ -2,12 +2,36 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { desc, eq } from 'drizzle-orm';
 import { schema, type Db } from '#lib/server/db/index.ts';
 import type { Logger, Mailer } from '#lib/server/platform/index.ts';
+import type { SubscriberStatus } from '#lib/shared/schemas/admin.ts';
 import { csvCell, toCsv } from '../csv.ts';
 import { newsletterConfirmEmail, newsletterWelcomeEmail } from './emails.ts';
 
 const { newsletter_subscribers } = schema;
 
 export type Subscriber = typeof newsletter_subscribers.$inferSelect;
+
+export interface SubscriberRow extends Subscriber {
+	status: SubscriberStatus;
+}
+
+export interface SubscriberList {
+	rows: SubscriberRow[];
+	/** Every row by status, whatever the filter. */
+	counts: Record<SubscriberStatus, number> & { total: number };
+}
+
+/**
+ * Confirmed: active with a confirmation. Unsubscribed: inactive with no
+ * confirmation pending (unsubscribing clears the token, re-subscribing sets
+ * one). Everything else, including legacy single opt-in rows, is unconfirmed.
+ */
+export function subscriberStatus(
+	row: Pick<Subscriber, 'is_active' | 'confirmed_at' | 'confirm_token_hash'>
+): SubscriberStatus {
+	if (row.is_active && row.confirmed_at) return 'confirmed';
+	if (!row.is_active && !row.confirm_token_hash) return 'unsubscribed';
+	return 'unconfirmed';
+}
 
 export interface NewsletterService {
 	/**
@@ -28,6 +52,8 @@ export interface NewsletterService {
 	unsubscribe(email: string, token: string): Promise<boolean>;
 	/** Admin: every row, newest first. */
 	list(): Promise<Subscriber[]>;
+	/** Admin: the rows with their status, newest first, optionally of one status. */
+	listByStatus(status?: SubscriberStatus): Promise<SubscriberList>;
 	/** Admin: every row as CSV, each cell quoted and formula-neutralised (security audit L3). */
 	exportCsv(): Promise<string>;
 }
@@ -177,6 +203,13 @@ export function createNewsletterService(deps: NewsletterDeps): NewsletterService
 		},
 
 		list,
+
+		async listByStatus(status) {
+			const all = (await list()).map((row) => ({ ...row, status: subscriberStatus(row) }));
+			const counts = { total: all.length, confirmed: 0, unconfirmed: 0, unsubscribed: 0 };
+			for (const row of all) counts[row.status] += 1;
+			return { rows: status ? all.filter((row) => row.status === status) : all, counts };
+		},
 
 		async exportCsv() {
 			const rows = await list();
