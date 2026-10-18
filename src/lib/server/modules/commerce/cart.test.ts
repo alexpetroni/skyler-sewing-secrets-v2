@@ -4,9 +4,12 @@ import { useTestDb } from '../../../../../tests/helpers/db.ts';
 import { seedCatalog, type SeededCatalog } from '../../../../../tests/helpers/fixtures.ts';
 import { CART_MAX_ITEMS } from '#lib/shared/schemas/commerce.ts';
 import {
+	acknowledgeRemovals,
 	addItem,
+	CART_COOKIE_NAME,
 	cartCookieOptions,
 	clear,
+	createCartCookie,
 	emptyCart,
 	parseCart,
 	removeItem,
@@ -104,6 +107,42 @@ describe('cart cookie codec', () => {
 		});
 		expect(cartCookieOptions(false).secure).toBe(false);
 	});
+
+	it('keeps pending removal notices through a round trip and omits the key when there are none', () => {
+		const withNotice: CartState = {
+			...state,
+			removed: [{ productId: uuid(3), reason: 'owned' }]
+		};
+		expect(parseCart(serializeCart(withNotice, SECRET), SECRET)).toEqual(withNotice);
+		expect(parseCart(serializeCart({ ...state, removed: [] }, SECRET), SECRET)).not.toHaveProperty(
+			'removed'
+		);
+		const badReason = Buffer.from(
+			JSON.stringify({ ...state, removed: [{ productId: uuid(3), reason: 'stolen' }] })
+		).toString('base64url');
+		const signedBad = `${badReason}.${createHmac('sha256', SECRET).update(badReason).digest('hex')}`;
+		expect(parseCart(signedBad, SECRET)).toEqual(emptyCart());
+	});
+
+	it('createCartCookie writes a signed, httpOnly lax cookie on / and reads it back', () => {
+		const jar = new Map<string, string>();
+		const calls: Array<{ name: string; options: ReturnType<typeof cartCookieOptions> }> = [];
+		const cookies = {
+			get: (name: string) => jar.get(name),
+			set: (name: string, value: string, options: ReturnType<typeof cartCookieOptions>) => {
+				jar.set(name, value);
+				calls.push({ name, options });
+			}
+		};
+		const codec = createCartCookie({ secret: SECRET, secure: true });
+		expect(codec.read(cookies)).toEqual(emptyCart());
+		codec.write(cookies, state);
+		expect(calls).toEqual([{ name: CART_COOKIE_NAME, options: cartCookieOptions(true) }]);
+		expect(jar.get(CART_COOKIE_NAME)).toBe(serializeCart(state, SECRET));
+		expect(codec.read(cookies)).toEqual(state);
+		// A different secret does not accept the value.
+		expect(createCartCookie({ secret: 'other', secure: true }).read(cookies)).toEqual(emptyCart());
+	});
 });
 
 describe('cart state helpers', () => {
@@ -126,6 +165,19 @@ describe('cart state helpers', () => {
 		expect(setPromo(state, 'SPRING20')).toEqual({ ...state, promoCode: 'SPRING20' });
 		expect(setPromo(setPromo(state, 'SPRING20'), null).promoCode).toBeNull();
 		expect(clear()).toEqual({ items: [], promoCode: null });
+	});
+
+	it('acknowledgeRemovals keeps the quoted lines and the code and drops pending notices', () => {
+		const state: CartState = {
+			items: [uuid(1), uuid(2), uuid(3)],
+			promoCode: 'SPRING20',
+			removed: [{ productId: uuid(4), reason: 'owned' }]
+		};
+		const quote = { lines: [{ productId: uuid(1) }, { productId: uuid(3) }] };
+		expect(acknowledgeRemovals(state, quote)).toEqual({
+			items: [uuid(1), uuid(3)],
+			promoCode: 'SPRING20'
+		});
 	});
 });
 
@@ -243,6 +295,50 @@ describe('createCartService', () => {
 			);
 			expect(lines.map((l) => l.productId)).toEqual([s.single.id]);
 			expect(removed).toEqual([{ productId: s.bundle.id, reason: 'owned' }]);
+		});
+	});
+
+	describe('add', () => {
+		it('appends a published product the viewer does not own', async () => {
+			const s = await seeded();
+			const result = await s.services.commerce.cart.add(
+				state([s.single.id]),
+				s.bundle.id,
+				{ id: s.users.nobody.id },
+				NOW
+			);
+			expect(result).toEqual({ ok: true, state: state([s.single.id, s.bundle.id]) });
+		});
+
+		it('refuses unpublished and unknown products', async () => {
+			const s = await seeded();
+			await s.services.catalog.unpublish(s.single.id);
+			const cart = s.services.commerce.cart;
+			expect(await cart.add(emptyCart(), s.single.id, null, NOW)).toEqual({
+				ok: false,
+				reason: 'unpublished'
+			});
+			expect(await cart.add(emptyCart(), uuid(42), null, NOW)).toEqual({
+				ok: false,
+				reason: 'unpublished'
+			});
+		});
+
+		it('keeps an owned product out of the items and queues an owned notice for the next quote only', async () => {
+			const s = await seeded();
+			const cart = s.services.commerce.cart;
+			const owner = { id: s.users.bundleOwner.id };
+			const result = await cart.add(state([s.single.id]), s.bundle.id, owner, NOW);
+			if (!result.ok) throw new Error('expected the add to succeed');
+			expect(result.state.items).toEqual([s.single.id]);
+
+			const quote = await cart.quote(result.state, owner, NOW);
+			expect(quote.lines.map((l) => l.productId)).toEqual([s.single.id]);
+			expect(quote.removed).toEqual([{ productId: s.bundle.id, reason: 'owned' }]);
+
+			const after = await cart.quote(acknowledgeRemovals(result.state, quote), owner, NOW);
+			expect(after.removed).toEqual([]);
+			expect(after.lines.map((l) => l.productId)).toEqual([s.single.id]);
 		});
 	});
 

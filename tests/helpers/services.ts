@@ -12,6 +12,7 @@ import {
 } from '../../src/lib/server/platform/fakes/video-host.ts';
 import { createCatalogService } from '../../src/lib/server/modules/catalog/index.ts';
 import {
+	createCartCookie,
 	createCartService,
 	createPromoService,
 	pricing
@@ -108,7 +109,8 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		commerce: {
 			pricing,
 			promo,
-			cart: createCartService({ catalog, entitlements, promo, log: logger })
+			cart: createCartService({ catalog, entitlements, promo, log: logger }),
+			cartCookie: createCartCookie({ secret: TEST_AUTH_SECRET, secure: false })
 		},
 		googleEnabled: google !== undefined,
 		resetEmails,

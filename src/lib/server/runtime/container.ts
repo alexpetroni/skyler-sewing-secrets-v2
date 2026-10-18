@@ -7,6 +7,7 @@ import {
 } from '#lib/server/modules/auth/index.ts';
 import { createCatalogService, type CatalogService } from '#lib/server/modules/catalog/index.ts';
 import {
+	createCartCookie,
 	createCartService,
 	createPromoService,
 	pricing,
@@ -127,7 +128,12 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		commerce: {
 			pricing,
 			promo,
-			cart: createCartService({ catalog, entitlements, promo, log: logger })
+			cart: createCartService({ catalog, entitlements, promo, log: logger }),
+			// `Secure` whenever the site is served over https (not on http://localhost).
+			cartCookie: createCartCookie({
+				secret: config.betterAuthSecret,
+				secure: config.siteUrl.startsWith('https://')
+			})
 		},
 		googleEnabled: config.google !== undefined
 	};

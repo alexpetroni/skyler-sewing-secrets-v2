@@ -2,11 +2,13 @@ import * as pricing from './pricing.ts';
 
 export { pricing };
 export {
+	acknowledgeRemovals,
 	addItem,
 	CART_COOKIE_MAX_AGE,
 	CART_COOKIE_NAME,
 	cartCookieOptions,
 	clear,
+	createCartCookie,
 	createCartService,
 	emptyCart,
 	FLAGSHIP_SUGGEST_RATIO,
@@ -14,6 +16,9 @@ export {
 	removeItem,
 	serializeCart,
 	setPromo,
+	type CartAddResult,
+	type CartCookie,
+	type CartCookieJar,
 	type CartLine,
 	type CartQuote,
 	type CartRemoval,
@@ -57,4 +62,5 @@ export interface CommerceServices {
 	pricing: typeof pricing;
 	promo: import('./promo.ts').PromoService;
 	cart: import('./cart.ts').CartService;
+	cartCookie: import('./cart.ts').CartCookie;
 }

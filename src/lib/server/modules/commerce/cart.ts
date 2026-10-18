@@ -1,7 +1,11 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import * as v from 'valibot';
 import type { Logger } from '#lib/server/platform/index.ts';
-import { CART_MAX_ITEMS, cartStateSchema } from '#lib/shared/schemas/commerce.ts';
+import {
+	CART_MAX_ITEMS,
+	cartStateSchema,
+	type cartRemovalReasons
+} from '#lib/shared/schemas/commerce.ts';
 import type { CatalogProduct, CatalogService } from '../catalog/index.ts';
 import type { EntitlementService } from '../entitlements/index.ts';
 import { computeQuote, type PromoRejection, type Quote, type QuoteLine } from './pricing.ts';
@@ -17,6 +21,11 @@ export interface CartState {
 	/** Product ids, insertion order, at most `CART_MAX_ITEMS`. */
 	items: string[];
 	promoCode: string | null;
+	/**
+	 * Removals the buyer has not been shown yet (the flash): `quote` reports
+	 * them and the cart page clears them with `acknowledgeRemovals`.
+	 */
+	removed?: CartRemoval[];
 }
 
 export const CART_COOKIE_NAME = 'cart';
@@ -30,6 +39,33 @@ export function cartCookieOptions(secure: boolean) {
 		sameSite: 'lax' as const,
 		secure,
 		maxAge: CART_COOKIE_MAX_AGE
+	};
+}
+
+/** The parts of SvelteKit's `Cookies` the cart cookie needs. */
+export interface CartCookieJar {
+	get(name: string): string | undefined;
+	set(name: string, value: string, options: ReturnType<typeof cartCookieOptions>): void;
+}
+
+/** Reads and writes the signed cart cookie; `Services.commerce.cartCookie`. */
+export interface CartCookie {
+	/** Never throws; anything but a valid signed cart reads as empty. No database. */
+	read(cookies: Pick<CartCookieJar, 'get'>): CartState;
+	write(cookies: Pick<CartCookieJar, 'set'>, state: CartState): void;
+}
+
+export function createCartCookie({
+	secret,
+	secure
+}: {
+	secret: string;
+	secure: boolean;
+}): CartCookie {
+	return {
+		read: (cookies) => parseCart(cookies.get(CART_COOKIE_NAME), secret),
+		write: (cookies, state) =>
+			cookies.set(CART_COOKIE_NAME, serializeCart(state, secret), cartCookieOptions(secure))
 	};
 }
 
@@ -69,9 +105,11 @@ export function parseCart(cookieValue: string | undefined | null, secret: string
 }
 
 function normalise(state: CartState): CartState {
+	const removed = (state.removed ?? []).slice(0, CART_MAX_ITEMS);
 	return {
 		items: [...new Set(state.items)].slice(0, CART_MAX_ITEMS),
-		promoCode: state.promoCode
+		promoCode: state.promoCode,
+		...(removed.length > 0 ? { removed } : {})
 	};
 }
 
@@ -93,11 +131,22 @@ export function clear(): CartState {
 	return emptyCart();
 }
 
-export type CartRemovalReason = 'owned' | 'unpublished' | 'included_in_course' | 'duplicate';
+export type CartRemovalReason = (typeof cartRemovalReasons)[number];
 
 export interface CartRemoval {
 	productId: string;
 	reason: CartRemovalReason;
+}
+
+/**
+ * The state after a render has explained `quote.removed`: only the quoted
+ * lines stay, and no notice is pending, so each removal is shown once.
+ */
+export function acknowledgeRemovals(
+	state: CartState,
+	quote: { lines: readonly Pick<CartLine, 'productId'>[] }
+): CartState {
+	return { items: quote.lines.map((line) => line.productId), promoCode: state.promoCode };
 }
 
 /** A purchasable line as the cart page shows it, priced for `now`. */
@@ -131,6 +180,8 @@ export interface CartQuote extends Omit<Quote, 'lines'> {
 /** The viewer whose ownership the cart is resolved against; null when signed out. */
 export type CartViewer = { id: string } | null;
 
+export type CartAddResult = { ok: true; state: CartState } | { ok: false; reason: 'unpublished' };
+
 export interface CartService {
 	/**
 	 * Products in the cookie against the catalogue and the viewer: unpublished
@@ -140,6 +191,12 @@ export interface CartService {
 	resolve(state: CartState, viewer: CartViewer, now?: Date): Promise<ResolvedCart>;
 	/** `resolve` + the code's validity + the arithmetic, plus the upsell hint. */
 	quote(state: CartState, viewer: CartViewer, now?: Date): Promise<CartQuote>;
+	/**
+	 * Adds a published product. One the viewer already owns stays out of the
+	 * items and is queued as an `owned` notice for the next quote instead; an
+	 * unknown or unpublished product is refused.
+	 */
+	add(state: CartState, productId: string, viewer: CartViewer, now?: Date): Promise<CartAddResult>;
 }
 
 export interface CreateCartServiceDeps {
@@ -231,6 +288,22 @@ export function createCartService({
 			return resolveWith(state, viewer, await catalog.listPublished({ now }));
 		},
 
+		async add(state, productId, viewer, now = new Date()) {
+			const published = await catalog.listPublished({ now });
+			const { removed } = await resolveWith(
+				{ items: [productId], promoCode: null },
+				viewer,
+				published
+			);
+			const reason = removed[0]?.reason;
+			if (reason === 'unpublished') return { ok: false, reason };
+			if (reason === 'owned') {
+				const notice: CartRemoval = { productId, reason };
+				return { ok: true, state: { ...state, removed: [...(state.removed ?? []), notice] } };
+			}
+			return { ok: true, state: addItem(state, productId) };
+		},
+
 		async quote(state, viewer, now = new Date()) {
 			const published = await catalog.listPublished({ now });
 			const { lines, removed } = await resolveWith(state, viewer, published);
@@ -264,7 +337,8 @@ export function createCartService({
 					discount: quoted.discount,
 					unitAmount: quoted.unitAmount
 				})),
-				removed,
+				// Notices queued by `add` come first, then what this render removed.
+				removed: [...(state.removed ?? []), ...removed],
 				subtotal: quote.subtotal,
 				discountTotal: quote.discountTotal,
 				total: quote.total,

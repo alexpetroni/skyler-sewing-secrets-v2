@@ -37,10 +37,22 @@ export type CartItemInput = v.InferOutput<typeof cartItemSchema>;
 export const cartPromoSchema = v.object({ code: promoCodeField });
 export type CartPromoInput = v.InferOutput<typeof cartPromoSchema>;
 
+/** Why the cart dropped a product; the cart page explains each one. */
+export const cartRemovalReasons = [
+	'owned',
+	'unpublished',
+	'included_in_course',
+	'duplicate'
+] as const;
+
 /** The signed cookie payload; anything else is treated as an empty cart. */
 export const cartStateSchema = v.object({
 	items: v.array(productIdSchema),
-	promoCode: v.nullable(promoCodeField)
+	promoCode: v.nullable(promoCodeField),
+	/** Removals not yet shown to the buyer; the next cart render shows them once. */
+	removed: v.optional(
+		v.array(v.object({ productId: productIdSchema, reason: v.picklist(cartRemovalReasons) }))
+	)
 });
 
 const optionalCount = v.optional(
