@@ -1,5 +1,5 @@
 import * as privateEnv from '$app/env/private';
-import { PUBLIC_BUNNY_CDN_URL, PUBLIC_SITE_URL } from '$app/env/public';
+import { PUBLIC_BUNNY_CDN_URL, PUBLIC_SITE_URL, PUBLIC_TURNSTILE_SITE_KEY } from '$app/env/public';
 import type { DbDriver } from '#lib/server/db/index.ts';
 
 /**
@@ -52,7 +52,7 @@ function blankToUndefined(value: string | undefined): string | undefined {
 export function getRuntimeConfig(): RuntimeConfig {
 	const googleClientId = blankToUndefined(privateEnv.GOOGLE_CLIENT_ID);
 	const googleClientSecret = blankToUndefined(privateEnv.GOOGLE_CLIENT_SECRET);
-	const turnstileSiteKey = blankToUndefined(privateEnv.TURNSTILE_SITE_KEY);
+	const turnstileSiteKey = blankToUndefined(PUBLIC_TURNSTILE_SITE_KEY);
 	const turnstileSecretKey = blankToUndefined(privateEnv.TURNSTILE_SECRET_KEY);
 
 	return {

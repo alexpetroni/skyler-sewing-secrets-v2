@@ -97,7 +97,8 @@ export const variables = defineEnvVars({
 		schema: optional,
 		description: 'Sentry DSN for error reporting; reporting is disabled when absent'
 	},
-	TURNSTILE_SITE_KEY: {
+	PUBLIC_TURNSTILE_SITE_KEY: {
+		public: true,
 		schema: optional,
 		description: 'Cloudflare Turnstile site key for the contact form; challenge off when absent'
 	},
