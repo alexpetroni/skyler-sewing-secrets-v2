@@ -9,7 +9,15 @@ import { renderMarkdown } from './markdown.ts';
 
 vi.mock('$app/server', () => ({ getRequestEvent: () => null }));
 
-const { lessons, lesson_resources, media_assets, product_items, products, user_progress } = schema;
+const {
+	audit_log,
+	lessons,
+	lesson_resources,
+	media_assets,
+	product_items,
+	products,
+	user_progress
+} = schema;
 
 function moduleInput(overrides: Partial<ModuleInput> = {}): ModuleInput {
 	return {
@@ -878,6 +886,169 @@ describe('createContentService', () => {
 			const standalone = await content.freePreviewLesson();
 			expect(standalone?.lesson.slug).toBe('standalone');
 			expect(standalone?.module).toBeNull();
+		});
+	});
+
+	describe('admin', () => {
+		async function createActor(services: ReturnType<typeof setup>): Promise<string> {
+			return services.users.createCredentialUser({
+				email: 'owner@example.com',
+				password: 'a-good-password'
+			});
+		}
+
+		async function auditActions(entityId: string) {
+			const rows = await db()
+				.select({ action: audit_log.action, actorId: audit_log.actor_id })
+				.from(audit_log)
+				.where(eq(audit_log.entity_id, entityId))
+				.orderBy(audit_log.created_at, audit_log.action);
+			return rows;
+		}
+
+		it('moves a module up and down by swapping it with its neighbour', async () => {
+			const { content } = setup();
+			const a = await content.modules.create(moduleInput({ slug: 'a', title: 'A', orderIndex: 0 }));
+			const b = await content.modules.create(moduleInput({ slug: 'b', title: 'B', orderIndex: 1 }));
+			const c = await content.modules.create(moduleInput({ slug: 'c', title: 'C', orderIndex: 2 }));
+
+			await content.modules.move(c.id, 'up');
+			expect((await content.modules.list()).map((m) => [m.slug, m.order_index])).toEqual([
+				['a', 0],
+				['c', 1],
+				['b', 2]
+			]);
+
+			await content.modules.move(a.id, 'down');
+			expect((await content.modules.list()).map((m) => m.slug)).toEqual(['c', 'a', 'b']);
+
+			// Already first / already last: nothing changes.
+			await content.modules.move(c.id, 'up');
+			await content.modules.move(b.id, 'down');
+			expect((await content.modules.list()).map((m) => m.slug)).toEqual(['c', 'a', 'b']);
+
+			await expectDomainError(content.modules.move(crypto.randomUUID(), 'up'), 'MODULE_NOT_FOUND');
+		});
+
+		it('lists modules with their lesson counts and finds one by id', async () => {
+			const { content } = setup();
+			const full = await content.modules.create(moduleInput({ slug: 'full', orderIndex: 0 }));
+			const empty = await content.modules.create(moduleInput({ slug: 'empty', orderIndex: 1 }));
+			await content.lessons.create(lessonInput({ moduleId: full.id, slug: 'one' }));
+			await content.lessons.create(lessonInput({ moduleId: full.id, slug: 'two' }));
+			await content.lessons.create(lessonInput({ slug: 'standalone' }));
+
+			const counted = await content.modules.listWithLessonCounts();
+			expect(counted.map((m) => [m.slug, m.lessonCount])).toEqual([
+				['full', 2],
+				['empty', 0]
+			]);
+			expect((await content.modules.getById(empty.id))?.slug).toBe('empty');
+			expect(await content.modules.getById(crypto.randomUUID())).toBeNull();
+		});
+
+		it('lists lessons for the admin with module title and media status, by filter', async () => {
+			const { content } = setup();
+			const second = await content.modules.create(
+				moduleInput({ slug: 'second', title: 'Second', orderIndex: 1 })
+			);
+			const first = await content.modules.create(
+				moduleInput({ slug: 'first', title: 'First', orderIndex: 0 })
+			);
+			const ready = await insertAsset('ready');
+			const encoding = await insertAsset('processing');
+			const published = await content.lessons.create(
+				lessonInput({
+					moduleId: first.id,
+					slug: 'published',
+					kind: 'video',
+					mediaAssetId: ready,
+					isPublished: true
+				})
+			);
+			const draft = await content.lessons.create(
+				lessonInput({ moduleId: second.id, slug: 'draft', kind: 'video', mediaAssetId: encoding })
+			);
+			const noMedia = await content.lessons.create(
+				lessonInput({ slug: 'solo', title: 'Solo', kind: 'video' })
+			);
+			const article = await content.lessons.create(
+				lessonInput({ slug: 'article', title: 'Article' })
+			);
+
+			const all = await content.lessons.list();
+			expect(all.map((row) => [row.lesson.slug, row.moduleTitle, row.mediaStatus])).toEqual([
+				['published', 'First', 'ready'],
+				['draft', 'Second', 'processing'],
+				['article', null, null],
+				['solo', null, null]
+			]);
+
+			const ids = async (filter: Parameters<typeof content.lessons.list>[0]) =>
+				(await content.lessons.list(filter)).map((row) => row.lesson.id);
+			expect(await ids({ moduleId: first.id })).toEqual([published.id]);
+			expect(await ids({ standalone: true })).toEqual([article.id, noMedia.id]);
+			expect(await ids({ unpublished: true })).toEqual([draft.id, article.id, noMedia.id]);
+			expect(await ids({ mediaNotReady: true })).toEqual([draft.id, noMedia.id]);
+		});
+
+		it('writes audit_log rows for module, lesson and resource changes when an actor is given', async () => {
+			const services = setup();
+			const { content } = services;
+			const actorId = await createActor(services);
+
+			const module = await content.modules.create(moduleInput(), actorId);
+			await content.modules.update(module.id, moduleInput({ title: 'Renamed' }), actorId);
+			await content.modules.move(module.id, 'down', actorId);
+			const lesson = await content.lessons.create(lessonInput({ moduleId: module.id }), actorId);
+			await content.lessons.update(lesson.id, lessonInput({ moduleId: module.id }), actorId);
+			await content.lessons.publish(lesson.id, actorId);
+			const resource = await content.resources.add({
+				lessonId: lesson.id,
+				title: 'Pattern',
+				fileUrl: 'https://cdn.example.com/pattern.pdf',
+				actorId
+			});
+			await content.resources.remove(resource.id, actorId);
+			await content.lessons.remove(lesson.id, actorId);
+			await content.modules.remove(module.id, actorId);
+
+			expect(await auditActions(module.id)).toEqual([
+				{ action: 'module.create', actorId },
+				{ action: 'module.update', actorId },
+				{ action: 'module.delete', actorId }
+			]);
+			expect(await auditActions(lesson.id)).toEqual([
+				{ action: 'lesson.create', actorId },
+				{ action: 'lesson.update', actorId },
+				{ action: 'lesson.publish', actorId },
+				{ action: 'lesson.delete', actorId }
+			]);
+			expect(await auditActions(resource.id)).toEqual([
+				{ action: 'lesson_resource.create', actorId },
+				{ action: 'lesson_resource.delete', actorId }
+			]);
+			const [update] = await db()
+				.select({ before: audit_log.before, after: audit_log.after })
+				.from(audit_log)
+				.where(eq(audit_log.action, 'module.update'));
+			expect(update.before).toMatchObject({ title: 'Basics' });
+			expect(update.after).toMatchObject({ title: 'Renamed' });
+		});
+
+		it('writes no audit row when the change is refused', async () => {
+			const services = setup();
+			const { content } = services;
+			const actorId = await createActor(services);
+			const asset = await insertAsset('processing');
+			await expectDomainError(
+				content.lessons.create(
+					lessonInput({ kind: 'video', mediaAssetId: asset, isPublished: true }),
+					actorId
+				),
+				'MEDIA_NOT_READY'
+			);
+			expect(await db().select().from(audit_log)).toEqual([]);
 		});
 	});
 });

@@ -9,7 +9,15 @@ import {
 import { DomainError } from '../errors.ts';
 import { renderMarkdown } from './markdown.ts';
 
-const { modules, lessons, lesson_resources, user_progress, media_assets, product_items } = schema;
+const {
+	modules,
+	lessons,
+	lesson_resources,
+	user_progress,
+	media_assets,
+	product_items,
+	audit_log
+} = schema;
 
 export type Module = typeof modules.$inferSelect;
 export type Lesson = typeof lessons.$inferSelect;
@@ -84,6 +92,27 @@ export interface AddResourceInput {
 	fileUrl: string;
 	fileType?: string | null;
 	fileSizeBytes?: number | null;
+	/** The admin adding it; recorded in `audit_log`. */
+	actorId?: string;
+}
+
+export interface ModuleWithLessonCount extends Module {
+	lessonCount: number;
+}
+
+/** The admin lesson list's filters; at most one of them applies. */
+export type LessonListFilter =
+	| { moduleId: string }
+	| { standalone: true }
+	| { unpublished: true }
+	| { mediaNotReady: true }
+	| Record<string, never>;
+
+export interface LessonListRow {
+	lesson: Lesson;
+	moduleTitle: string | null;
+	/** The attached asset's status; null without an asset. */
+	mediaStatus: MediaAssetRow['status'] | null;
 }
 
 export interface ProgressInput {
@@ -105,21 +134,30 @@ interface PublishedFilter {
 export interface ContentService {
 	modules: {
 		list(params?: PublishedFilter): Promise<Module[]>;
+		/** Every module in order, with how many lessons it holds (the admin list). */
+		listWithLessonCounts(): Promise<ModuleWithLessonCount[]>;
+		getById(id: string): Promise<Module | null>;
 		getBySlug(slug: string, params?: PublishedFilter): Promise<Module | null>;
-		create(input: ModuleInput): Promise<Module>;
-		update(id: string, input: ModuleInput): Promise<Module>;
+		// Mutations take the acting admin; when given, the change is written to
+		// `audit_log` in the same transaction.
+		create(input: ModuleInput, actorId?: string): Promise<Module>;
+		update(id: string, input: ModuleInput, actorId?: string): Promise<Module>;
 		/** Sets `order_index` to each id's position in `ids`. */
-		reorder(ids: string[]): Promise<void>;
+		reorder(ids: string[], actorId?: string): Promise<void>;
+		/** Swaps the module with its neighbour in the current order; a no-op at either end. */
+		move(id: string, direction: 'up' | 'down', actorId?: string): Promise<void>;
 		/** Refuses with `MODULE_HAS_SOLD_LESSONS` while a product lists one of its lessons. */
-		remove(id: string): Promise<void>;
+		remove(id: string, actorId?: string): Promise<void>;
 	};
 	lessons: {
-		create(input: LessonInput): Promise<Lesson>;
-		update(id: string, input: LessonInput): Promise<Lesson>;
+		create(input: LessonInput, actorId?: string): Promise<Lesson>;
+		update(id: string, input: LessonInput, actorId?: string): Promise<Lesson>;
 		/** Refuses a video lesson whose asset is missing or not `ready` (`MEDIA_NOT_READY`). */
-		publish(id: string): Promise<Lesson>;
+		publish(id: string, actorId?: string): Promise<Lesson>;
 		/** Refuses with `LESSON_IN_PRODUCT` while a product lists the lesson. */
-		remove(id: string): Promise<void>;
+		remove(id: string, actorId?: string): Promise<void>;
+		/** The admin list: module lessons in course order, then standalone videos. */
+		list(filter?: LessonListFilter): Promise<LessonListRow[]>;
 		/** With `publishedOnly`, both the module and the lesson must be published. */
 		getBySlugs(
 			moduleSlug: string,
@@ -140,7 +178,7 @@ export interface ContentService {
 		/** A resource with the lesson it belongs to, for the download access check. */
 		getById(id: string): Promise<{ resource: LessonResource; lesson: Lesson } | null>;
 		add(input: AddResourceInput): Promise<LessonResource>;
-		remove(id: string): Promise<void>;
+		remove(id: string, actorId?: string): Promise<void>;
 	};
 	progress: {
 		upsert(input: ProgressInput): Promise<Progress>;
@@ -195,7 +233,41 @@ function lessonValues(input: LessonInput) {
 	};
 }
 
+interface AuditEntry {
+	action: string;
+	entity: 'module' | 'lesson' | 'lesson_resource';
+	entityId: string;
+	before?: unknown;
+	after?: unknown;
+}
+
 export function createContentService({ db, log }: CreateContentServiceDeps): ContentService {
+	/** Records an admin change; callers pass their transaction so both commit together. */
+	async function writeAudit(tx: Tx, actorId: string | undefined, entry: AuditEntry) {
+		if (!actorId) return;
+		await tx.insert(audit_log).values({
+			actor_id: actorId,
+			action: entry.action,
+			entity: entry.entity,
+			entity_id: entry.entityId,
+			before: entry.before ?? null,
+			after: entry.after ?? null
+		});
+	}
+
+	async function reorderModules(tx: Tx, ids: string[]): Promise<void> {
+		for (const [index, id] of ids.entries()) {
+			const updated = await tx
+				.update(modules)
+				.set({ order_index: index, updated_at: sql`now()` })
+				.where(eq(modules.id, id))
+				.returning({ id: modules.id });
+			if (updated.length === 0) {
+				throw new DomainError('MODULE_NOT_FOUND', 'Module not found');
+			}
+		}
+	}
+
 	async function assertModuleSlugFree(tx: Tx, slug: string, exceptId?: string): Promise<void> {
 		const filters: SQL[] = [eq(modules.slug, slug)];
 		if (exceptId) filters.push(ne(modules.id, exceptId));
@@ -406,43 +478,95 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 					.orderBy(...MODULE_ORDER);
 			},
 
+			async listWithLessonCounts() {
+				const rows = await db
+					.select({ module: modules, lessonCount: sql<number>`count(${lessons.id})::int` })
+					.from(modules)
+					.leftJoin(lessons, eq(lessons.module_id, modules.id))
+					.groupBy(modules.id)
+					.orderBy(...MODULE_ORDER);
+				return rows.map((row) => ({ ...row.module, lessonCount: row.lessonCount }));
+			},
+
+			async getById(id) {
+				const [module] = await db.select().from(modules).where(eq(modules.id, id)).limit(1);
+				return module ?? null;
+			},
+
 			getBySlug: getModuleBySlug,
 
-			create: (input) =>
+			create: (input, actorId) =>
 				withTx(db, async (tx) => {
 					await assertModuleSlugFree(tx, input.slug);
 					const [module] = await tx.insert(modules).values(moduleValues(input)).returning();
+					await writeAudit(tx, actorId, {
+						action: 'module.create',
+						entity: 'module',
+						entityId: module.id,
+						after: module
+					});
 					log.info('module created', { moduleId: module.id });
 					return module;
 				}),
 
-			update: (id, input) =>
+			update: (id, input, actorId) =>
 				withTx(db, async (tx) => {
 					await assertModuleSlugFree(tx, input.slug, id);
+					const [before] = await tx.select().from(modules).where(eq(modules.id, id)).for('update');
+					if (!before) throw new DomainError('MODULE_NOT_FOUND', 'Module not found');
 					const [module] = await tx
 						.update(modules)
 						.set({ ...moduleValues(input), updated_at: sql`now()` })
 						.where(eq(modules.id, id))
 						.returning();
-					if (!module) throw new DomainError('MODULE_NOT_FOUND', 'Module not found');
+					await writeAudit(tx, actorId, {
+						action: 'module.update',
+						entity: 'module',
+						entityId: id,
+						before,
+						after: module
+					});
 					return module;
 				}),
 
-			reorder: (ids) =>
+			reorder: (ids, actorId) =>
 				withTx(db, async (tx) => {
-					for (const [index, id] of ids.entries()) {
-						const updated = await tx
-							.update(modules)
-							.set({ order_index: index, updated_at: sql`now()` })
-							.where(eq(modules.id, id))
-							.returning({ id: modules.id });
-						if (updated.length === 0) {
-							throw new DomainError('MODULE_NOT_FOUND', 'Module not found');
-						}
+					await reorderModules(tx, ids);
+					for (const id of ids) {
+						await writeAudit(tx, actorId, {
+							action: 'module.reorder',
+							entity: 'module',
+							entityId: id,
+							after: { order: ids }
+						});
 					}
 				}),
 
-			remove: (id) =>
+			move: (id, direction, actorId) =>
+				withTx(db, async (tx) => {
+					// Locks every module row so two moves cannot interleave.
+					const ordered = await tx
+						.select({ id: modules.id, orderIndex: modules.order_index })
+						.from(modules)
+						.orderBy(...MODULE_ORDER)
+						.for('update');
+					const index = ordered.findIndex((module) => module.id === id);
+					if (index === -1) throw new DomainError('MODULE_NOT_FOUND', 'Module not found');
+					const target = direction === 'up' ? index - 1 : index + 1;
+					if (target < 0 || target >= ordered.length) return;
+					const ids = ordered.map((module) => module.id);
+					[ids[index], ids[target]] = [ids[target], ids[index]];
+					await reorderModules(tx, ids);
+					await writeAudit(tx, actorId, {
+						action: 'module.move',
+						entity: 'module',
+						entityId: id,
+						before: { order_index: ordered[index].orderIndex },
+						after: { order_index: target, direction }
+					});
+				}),
+
+			remove: (id, actorId) =>
 				withTx(db, async (tx) => {
 					const [sold] = await tx
 						.select({ lessonId: product_items.lesson_id })
@@ -457,17 +581,20 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 						);
 					}
 					// Lessons, their resources and progress go with the module (ON DELETE CASCADE).
-					const removed = await tx
-						.delete(modules)
-						.where(eq(modules.id, id))
-						.returning({ id: modules.id });
-					if (removed.length === 0) throw new DomainError('MODULE_NOT_FOUND', 'Module not found');
+					const [removed] = await tx.delete(modules).where(eq(modules.id, id)).returning();
+					if (!removed) throw new DomainError('MODULE_NOT_FOUND', 'Module not found');
+					await writeAudit(tx, actorId, {
+						action: 'module.delete',
+						entity: 'module',
+						entityId: id,
+						before: removed
+					});
 					log.info('module removed', { moduleId: id });
 				})
 		},
 
 		lessons: {
-			create: (input) =>
+			create: (input, actorId) =>
 				withTx(db, async (tx) => {
 					await assertLessonReferences(tx, input);
 					await assertLessonSlugFree(tx, input.moduleId, input.slug);
@@ -475,13 +602,19 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 						await assertPublishable(tx, { kind: input.kind, media_asset_id: input.mediaAssetId });
 					}
 					const [lesson] = await tx.insert(lessons).values(lessonValues(input)).returning();
+					await writeAudit(tx, actorId, {
+						action: 'lesson.create',
+						entity: 'lesson',
+						entityId: lesson.id,
+						after: lesson
+					});
 					log.info('lesson created', { lessonId: lesson.id });
 					return lesson;
 				}),
 
-			update: (id, input) =>
+			update: (id, input, actorId) =>
 				withTx(db, async (tx) => {
-					await requireLesson(tx, id);
+					const before = await requireLesson(tx, id);
 					await assertLessonReferences(tx, input);
 					await assertLessonSlugFree(tx, input.moduleId, input.slug, id);
 					if (input.isPublished) {
@@ -492,10 +625,17 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 						.set({ ...lessonValues(input), updated_at: sql`now()` })
 						.where(eq(lessons.id, id))
 						.returning();
+					await writeAudit(tx, actorId, {
+						action: 'lesson.update',
+						entity: 'lesson',
+						entityId: id,
+						before,
+						after: lesson
+					});
 					return lesson;
 				}),
 
-			publish: (id) =>
+			publish: (id, actorId) =>
 				withTx(db, async (tx) => {
 					const lesson = await requireLesson(tx, id);
 					await assertPublishable(tx, lesson);
@@ -504,13 +644,20 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 						.set({ is_published: true, updated_at: sql`now()` })
 						.where(eq(lessons.id, id))
 						.returning();
+					await writeAudit(tx, actorId, {
+						action: 'lesson.publish',
+						entity: 'lesson',
+						entityId: id,
+						before: { is_published: lesson.is_published },
+						after: { is_published: true }
+					});
 					log.info('lesson published', { lessonId: id });
 					return published;
 				}),
 
-			remove: (id) =>
+			remove: (id, actorId) =>
 				withTx(db, async (tx) => {
-					await requireLesson(tx, id);
+					const lesson = await requireLesson(tx, id);
 					const [sold] = await tx
 						.select({ productId: product_items.product_id })
 						.from(product_items)
@@ -523,8 +670,38 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 						);
 					}
 					await tx.delete(lessons).where(eq(lessons.id, id));
+					await writeAudit(tx, actorId, {
+						action: 'lesson.delete',
+						entity: 'lesson',
+						entityId: id,
+						before: lesson
+					});
 					log.info('lesson removed', { lessonId: id });
 				}),
+
+			async list(filter = {}) {
+				const filters: SQL[] = [];
+				if ('moduleId' in filter) filters.push(eq(lessons.module_id, filter.moduleId));
+				if ('standalone' in filter) filters.push(isNull(lessons.module_id));
+				if ('unpublished' in filter) filters.push(eq(lessons.is_published, false));
+				if ('mediaNotReady' in filter) {
+					// Video lessons that could not be published yet: no asset, or one still encoding.
+					filters.push(eq(lessons.kind, 'video'));
+					filters.push(or(isNull(media_assets.id), ne(media_assets.status, 'ready')) as SQL);
+				}
+				const rows = await db
+					.select({
+						lesson: lessons,
+						moduleTitle: modules.title,
+						mediaStatus: media_assets.status
+					})
+					.from(lessons)
+					.leftJoin(modules, eq(modules.id, lessons.module_id))
+					.leftJoin(media_assets, eq(media_assets.id, lessons.media_asset_id))
+					.where(and(...filters))
+					.orderBy(sql`${modules.order_index} asc nulls last`, asc(modules.title), ...LESSON_ORDER);
+				return rows;
+			},
 
 			async getBySlugs(moduleSlug, lessonSlug, { publishedOnly = false } = {}) {
 				const module = await getModuleBySlug(moduleSlug, { publishedOnly });
@@ -616,29 +793,42 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 				if (!/^https:\/\/\S+$/i.test(input.fileUrl)) {
 					throw new DomainError('INVALID_URL', 'Must be an https:// URL');
 				}
-				await requireLesson(db, input.lessonId);
-				const [resource] = await db
-					.insert(lesson_resources)
-					.values({
-						lesson_id: input.lessonId,
-						title: input.title,
-						file_url: input.fileUrl,
-						file_type: input.fileType ?? null,
-						file_size_bytes: input.fileSizeBytes ?? null
-					})
-					.returning();
-				return resource;
+				return withTx(db, async (tx) => {
+					await requireLesson(tx, input.lessonId);
+					const [resource] = await tx
+						.insert(lesson_resources)
+						.values({
+							lesson_id: input.lessonId,
+							title: input.title,
+							file_url: input.fileUrl,
+							file_type: input.fileType ?? null,
+							file_size_bytes: input.fileSizeBytes ?? null
+						})
+						.returning();
+					await writeAudit(tx, input.actorId, {
+						action: 'lesson_resource.create',
+						entity: 'lesson_resource',
+						entityId: resource.id,
+						after: resource
+					});
+					return resource;
+				});
 			},
 
-			async remove(id) {
-				const removed = await db
-					.delete(lesson_resources)
-					.where(eq(lesson_resources.id, id))
-					.returning({ id: lesson_resources.id });
-				if (removed.length === 0) {
-					throw new DomainError('RESOURCE_NOT_FOUND', 'Resource not found');
-				}
-			}
+			remove: (id, actorId) =>
+				withTx(db, async (tx) => {
+					const [removed] = await tx
+						.delete(lesson_resources)
+						.where(eq(lesson_resources.id, id))
+						.returning();
+					if (!removed) throw new DomainError('RESOURCE_NOT_FOUND', 'Resource not found');
+					await writeAudit(tx, actorId, {
+						action: 'lesson_resource.delete',
+						entity: 'lesson_resource',
+						entityId: id,
+						before: removed
+					});
+				})
 		},
 
 		progress: {
