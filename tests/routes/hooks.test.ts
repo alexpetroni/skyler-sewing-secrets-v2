@@ -115,6 +115,24 @@ describe('createHandle', () => {
 		expect(result.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
 	}
 
+	describe('Content Security Policy', () => {
+		it('keeps the CSP header SvelteKit set on the page response', async () => {
+			const policy = "default-src 'self'; script-src 'self' 'nonce-abc123'";
+			const event = fakeEvent({ url: '/', headers: { cookie: memberCookie } });
+			const response = await runHandle(handle, event, async () => {
+				return new Response('page', {
+					status: 200,
+					headers: { 'content-type': 'text/html', 'content-security-policy': policy }
+				});
+			});
+
+			expect(response.status).toBe(200);
+			expect(response.headers.get('content-security-policy')).toBe(policy);
+			// The baseline headers are added without touching the policy.
+			expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
+		});
+	});
+
 	describe('session and locals', () => {
 		it('a visitor without a cookie gets empty locals and the page', async () => {
 			const result = await call({ path: '/' });

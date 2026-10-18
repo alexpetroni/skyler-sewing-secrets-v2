@@ -1,9 +1,11 @@
 /**
  * Baseline security headers on every response. Headers are only set when
- * absent so a route can still override one deliberately. No CSP yet (it needs
- * allow-lists for fonts, the Bunny iframe and the CDN), and Permissions-Policy
- * leaves autoplay, fullscreen and picture-in-picture alone because the lesson
- * player's iframe uses them.
+ * absent so a route can still override one deliberately. The Content Security
+ * Policy is SvelteKit's (nonce mode, `csp` in vite.config.ts) and passes
+ * through untouched; `X-Frame-Options: DENY` is kept alongside its
+ * `frame-ancestors 'none'` for clients that predate CSP level 2.
+ * Permissions-Policy leaves autoplay, fullscreen and picture-in-picture alone
+ * because the lesson player's iframe uses them.
  */
 export function withSecurityHeaders(response: Response, url: URL): Response {
 	const headers = response.headers;
