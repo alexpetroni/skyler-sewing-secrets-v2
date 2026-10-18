@@ -27,7 +27,8 @@ export interface AuthService {
 	 * user proves control of it (security audit H3).
 	 */
 	createCredentialUser(input: CreateCredentialUserInput): Promise<string>;
-	markEmailVerified(userId: string): Promise<void>;
+	/** Flags the address as verified; runs in `tx` when the caller holds one. */
+	markEmailVerified(userId: string, tx?: Tx): Promise<void>;
 	/** Defensive fallback kept from the Supabase days: inserts a missing profile row. */
 	ensureProfile(input: EnsureProfileInput): Promise<void>;
 	getProfile(userId: string): Promise<Profile | null>;
@@ -113,8 +114,8 @@ export function createAuthService({ db }: { db: Db }): AuthService {
 			return userId;
 		},
 
-		async markEmailVerified(userId) {
-			await db
+		async markEmailVerified(userId, tx) {
+			await (tx ?? db)
 				.update(users)
 				.set({ emailVerified: true, updatedAt: new Date() })
 				.where(eq(users.id, userId));

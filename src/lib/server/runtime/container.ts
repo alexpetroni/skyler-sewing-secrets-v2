@@ -9,6 +9,7 @@ import { createCatalogService, type CatalogService } from '#lib/server/modules/c
 import {
 	createCartCookie,
 	createCartService,
+	createFulfilmentService,
 	createOrderService,
 	createPromoService,
 	pricing,
@@ -61,6 +62,8 @@ export interface Services {
 	commerce: CommerceServices;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
+	/** The bearer secret the `/api/jobs/*` endpoints require. */
+	cronSecret: string;
 }
 
 /** Builds the services from an explicit configuration; `getServices` caches the result. */
@@ -100,6 +103,16 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 	const promo = createPromoService({ db, log: logger });
 	const cart = createCartService({ catalog, entitlements, promo, log: logger });
 	const limiter = createRequestLimiter({ db });
+	const users = createAuthService({ db });
+	const orders = createOrderService({
+		db,
+		cart,
+		promo,
+		catalog,
+		gateway: payments,
+		log: logger,
+		siteUrl: config.siteUrl
+	});
 	// Built only when configured; the marketing service skips the check otherwise.
 	const turnstile = config.turnstile
 		? createTurnstileVerifier({ secret: config.turnstile.secretKey, fetch })
@@ -108,7 +121,7 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 	return {
 		db,
 		auth,
-		users: createAuthService({ db }),
+		users,
 		logger,
 		payments,
 		videoHost,
@@ -137,17 +150,19 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 				secret: config.betterAuthSecret,
 				secure: config.siteUrl.startsWith('https://')
 			}),
-			orders: createOrderService({
+			orders,
+			fulfilment: createFulfilmentService({
 				db,
-				cart,
-				promo,
-				catalog,
-				gateway: payments,
+				orders,
+				entitlements,
+				auth: users,
+				mailer,
 				log: logger,
 				siteUrl: config.siteUrl
 			})
 		},
-		googleEnabled: config.google !== undefined
+		googleEnabled: config.google !== undefined,
+		cronSecret: config.cronSecret
 	};
 }
 

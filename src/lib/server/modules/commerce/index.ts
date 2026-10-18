@@ -42,6 +42,17 @@ export {
 	type QuoteLine
 } from './pricing.ts';
 export {
+	createFulfilmentService,
+	proRata,
+	type CreateFulfilmentServiceDeps,
+	type FulfilmentService,
+	type FulfilOrderResult,
+	type HandleEventResult,
+	type RevocationKind,
+	type RevokeOrderInput,
+	type RevokeOrderResult
+} from './fulfilment.ts';
+export {
 	createOrderService,
 	EmptyCartError,
 	ORDER_TTL_MS,
@@ -80,4 +91,5 @@ export interface CommerceServices {
 	cart: import('./cart.ts').CartService;
 	cartCookie: import('./cart.ts').CartCookie;
 	orders: import('./orders.ts').OrderService;
+	fulfilment: import('./fulfilment.ts').FulfilmentService;
 }

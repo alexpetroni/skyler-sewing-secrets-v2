@@ -14,6 +14,7 @@ import { createCatalogService } from '../../src/lib/server/modules/catalog/index
 import {
 	createCartCookie,
 	createCartService,
+	createFulfilmentService,
 	createOrderService,
 	createPromoService,
 	pricing
@@ -29,6 +30,7 @@ import type { Services } from '../../src/lib/server/runtime/container.ts';
 export const TEST_SITE_URL = 'http://localhost:5173';
 export const TEST_AUTH_SECRET = 'test-secret-that-is-long-enough-for-better-auth';
 export const TEST_CONTACT_EMAIL = 'inbox@skylersewingsecrets.test';
+export const TEST_CRON_SECRET = 'test-cron-secret';
 
 export type { LogEntry };
 
@@ -84,11 +86,22 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 	const mailer = createFakeMailer();
 	const limiter = createRequestLimiter({ db, now: overrides.now });
 	const turnstile = overrides.turnstile;
+	const users = createAuthService({ db });
+	const orders = createOrderService({
+		db,
+		cart,
+		promo,
+		catalog,
+		gateway: payments,
+		log: logger,
+		siteUrl: TEST_SITE_URL,
+		now: overrides.now
+	});
 
 	return {
 		db,
 		auth,
-		users: createAuthService({ db }),
+		users,
 		logger,
 		payments,
 		videoHost,
@@ -114,18 +127,20 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 			promo,
 			cart,
 			cartCookie: createCartCookie({ secret: TEST_AUTH_SECRET, secure: false }),
-			orders: createOrderService({
+			orders,
+			fulfilment: createFulfilmentService({
 				db,
-				cart,
-				promo,
-				catalog,
-				gateway: payments,
+				orders,
+				entitlements,
+				auth: users,
+				mailer,
 				log: logger,
 				siteUrl: TEST_SITE_URL,
 				now: overrides.now
 			})
 		},
 		googleEnabled: google !== undefined,
+		cronSecret: TEST_CRON_SECRET,
 		resetEmails,
 		logEntries: logger.entries
 	};
