@@ -1,6 +1,7 @@
 export { renderMarkdown, ALLOWED_ATTRIBUTES, ALLOWED_TAGS } from './markdown.ts';
 export {
 	createContentService,
+	HOME_PREVIEW_LESSON_KEY,
 	MAX_POSITION_SECONDS,
 	type AddResourceInput,
 	type ContentService,

@@ -1,7 +1,9 @@
 import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { schema, withTx, type Db, type Tx } from '#lib/server/db/index.ts';
 import type { Logger } from '#lib/server/platform/index.ts';
+import * as v from 'valibot';
 import {
+	idSchema,
 	MAX_POSITION_SECONDS,
 	type LessonInput,
 	type ModuleInput
@@ -16,8 +18,12 @@ const {
 	user_progress,
 	media_assets,
 	product_items,
-	audit_log
+	audit_log,
+	site_settings
 } = schema;
+
+/** `site_settings` key of the lesson the homepage previews (set in the admin settings). */
+export const HOME_PREVIEW_LESSON_KEY = 'home_preview_lesson_id';
 
 export type Module = typeof modules.$inferSelect;
 export type Lesson = typeof lessons.$inferSelect;
@@ -106,6 +112,7 @@ export type LessonListFilter =
 	| { standalone: true }
 	| { unpublished: true }
 	| { mediaNotReady: true }
+	| { freePreview: true }
 	| Record<string, never>;
 
 export interface LessonListRow {
@@ -189,7 +196,13 @@ export interface ContentService {
 		continueWatching(userId: string, limit: number): Promise<ProgressLesson[]>;
 		recentlyCompleted(userId: string, limit: number): Promise<ProgressLesson[]>;
 	};
-	/** The homepage preview: first published free-preview lesson by module, then lesson order. */
+	/**
+	 * The homepage preview: the lesson chosen in `site_settings`
+	 * (`HOME_PREVIEW_LESSON_KEY`) while it is a published free preview in a
+	 * published module (or standalone); otherwise the first such lesson by
+	 * module, then lesson order. The homepage embeds it without an access
+	 * check, so the free-preview flag is required either way.
+	 */
 	freePreviewLesson(): Promise<FreePreview | null>;
 }
 
@@ -684,6 +697,7 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 				if ('moduleId' in filter) filters.push(eq(lessons.module_id, filter.moduleId));
 				if ('standalone' in filter) filters.push(isNull(lessons.module_id));
 				if ('unpublished' in filter) filters.push(eq(lessons.is_published, false));
+				if ('freePreview' in filter) filters.push(eq(lessons.is_free_preview, true));
 				if ('mediaNotReady' in filter) {
 					// Video lessons that could not be published yet: no asset, or one still encoding.
 					filters.push(eq(lessons.kind, 'video'));
@@ -941,21 +955,36 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 		},
 
 		async freePreviewLesson() {
-			const [row] = await db
-				.select({ lesson: lessons, module: modules, asset: media_assets })
-				.from(lessons)
-				.leftJoin(modules, eq(modules.id, lessons.module_id))
-				.leftJoin(media_assets, eq(media_assets.id, lessons.media_asset_id))
-				.where(
-					and(
-						eq(lessons.is_published, true),
-						eq(lessons.is_free_preview, true),
-						or(isNull(lessons.module_id), eq(modules.is_published, true))
-					)
-				)
-				.orderBy(sql`${modules.order_index} asc nulls last`, ...LESSON_ORDER, asc(lessons.id))
+			const [setting] = await db
+				.select({ value: site_settings.value })
+				.from(site_settings)
+				.where(eq(site_settings.key, HOME_PREVIEW_LESSON_KEY))
 				.limit(1);
-			return row ?? null;
+			const chosenId = setting && v.is(idSchema, setting.value) ? setting.value : null;
+
+			const previews = (where?: SQL) =>
+				db
+					.select({ lesson: lessons, module: modules, asset: media_assets })
+					.from(lessons)
+					.leftJoin(modules, eq(modules.id, lessons.module_id))
+					.leftJoin(media_assets, eq(media_assets.id, lessons.media_asset_id))
+					.where(
+						and(
+							eq(lessons.is_published, true),
+							eq(lessons.is_free_preview, true),
+							or(isNull(lessons.module_id), eq(modules.is_published, true)),
+							where
+						)
+					)
+					.orderBy(sql`${modules.order_index} asc nulls last`, ...LESSON_ORDER, asc(lessons.id))
+					.limit(1);
+
+			if (chosenId) {
+				const [chosen] = await previews(eq(lessons.id, chosenId));
+				if (chosen) return chosen;
+			}
+			const [first] = await previews();
+			return first ?? null;
 		}
 	};
 }
