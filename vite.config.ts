@@ -12,21 +12,14 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter()
+			adapter: adapter({ runtime: 'nodejs24.x' }),
+			csrf: { trustedOrigins: [] }
 		})
 	],
 	test: {
-		expect: { requireAssertions: true },
-		projects: [
-			{
-				extends: './vite.config.ts',
-				test: {
-					name: 'server',
-					environment: 'node',
-					include: ['src/**/*.{test,spec}.{js,ts}'],
-					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']
-				}
-			}
-		]
+		environment: 'node',
+		include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+		exclude: ['legacy/**', 'node_modules/**', 'tests/e2e/**'],
+		expect: { requireAssertions: true }
 	}
 });

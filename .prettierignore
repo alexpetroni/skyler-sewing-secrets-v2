@@ -1,9 +1,16 @@
-# Package Managers
-package-lock.json
-pnpm-lock.yaml
-yarn.lock
-bun.lock
-bun.lockb
+# Vendored legacy reference (read-only)
+/legacy/
 
-# Miscellaneous
+# Build output
+/.svelte-kit/
+/build/
+/.vercel/
+
+# Static assets and generated files
 /static/
+package-lock.json
+/drizzle/
+
+# Human-owned planning documents and runner state
+/docs/
+/.phase-runner/
