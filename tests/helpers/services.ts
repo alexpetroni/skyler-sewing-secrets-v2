@@ -30,7 +30,10 @@ import {
 } from '../../src/lib/server/modules/commerce/index.ts';
 import { createContentService } from '../../src/lib/server/modules/content/index.ts';
 import { createEntitlementService } from '../../src/lib/server/modules/entitlements/index.ts';
-import { createMarketingService } from '../../src/lib/server/modules/marketing/index.ts';
+import {
+	createMarketingService,
+	signInCodeEmail
+} from '../../src/lib/server/modules/marketing/index.ts';
 import { createMediaService } from '../../src/lib/server/modules/media/index.ts';
 import type { FakeTurnstile } from '../../src/lib/server/platform/fakes/turnstile.ts';
 import { createRequestLimiter } from '../../src/lib/server/platform/request-limits.ts';
@@ -77,6 +80,7 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 
 	const logger = createFakeLogger();
 	const videoHost = overrides.videoHost ?? createFakeVideoHost();
+	const mailer = createFakeMailer();
 	const auth = createAuth({
 		db,
 		secret: TEST_AUTH_SECRET,
@@ -84,6 +88,10 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		google,
 		sendPasswordReset: async (to, url) => {
 			resetEmails.push({ to, url });
+		},
+		// Through the fake mailer, so tests read the code off the message.
+		sendSignInCode: async (to, code) => {
+			await mailer.send({ to, ...signInCodeEmail(code, TEST_SITE_URL) });
 		}
 	});
 
@@ -96,7 +104,6 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 	const storage = createFakeStorage({
 		now: overrides.now ? () => overrides.now!().getTime() : undefined
 	});
-	const mailer = createFakeMailer();
 	const limiter = createRequestLimiter({ db, now: overrides.now });
 	const turnstile = overrides.turnstile;
 	const users = createAuthService({ db });

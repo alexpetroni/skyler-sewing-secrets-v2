@@ -26,6 +26,7 @@ import {
 import {
 	createMarketingService,
 	passwordResetEmail,
+	signInCodeEmail,
 	type MarketingService
 } from '#lib/server/modules/marketing/index.ts';
 import { createMediaService, type MediaService } from '#lib/server/modules/media/index.ts';
@@ -93,6 +94,9 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		google: config.google,
 		sendPasswordReset: async (to, url) => {
 			await mailer.send({ to, ...passwordResetEmail(url, config.siteUrl) });
+		},
+		sendSignInCode: async (to, code) => {
+			await mailer.send({ to, ...signInCodeEmail(code, config.siteUrl) });
 		}
 	});
 

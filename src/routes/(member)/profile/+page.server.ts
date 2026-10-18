@@ -7,10 +7,11 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	const { user, profile } = requireUser(event, '/profile');
-	const { entitlements, marketing } = event.locals.services;
-	const [owned, testimonial] = await Promise.all([
+	const { entitlements, marketing, users } = event.locals.services;
+	const [owned, testimonial, hasPassword] = await Promise.all([
 		entitlements.listForUser(user.id),
-		marketing.testimonials.forUser(user.id)
+		marketing.testimonials.forUser(user.id),
+		users.hasPassword(user.id)
 	]);
 	return {
 		profile: {
@@ -21,6 +22,8 @@ export const load: PageServerLoad = async (event) => {
 		},
 		allAccess: event.locals.access.allAccess,
 		isAdmin: event.locals.access.isAdmin,
+		/** False after a checkout claim (and for Google-only accounts): the page offers to set one. */
+		hasPassword,
 		owned: owned.map((entitlement) => ({
 			id: entitlement.id,
 			title: entitlement.product.title,

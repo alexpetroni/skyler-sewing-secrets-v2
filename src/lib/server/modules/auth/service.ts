@@ -101,6 +101,12 @@ export interface AuthService {
 	revokeAllSessions(userId: string): Promise<void>;
 	/** Keeps the `keep` newest sessions of the user and deletes the rest. */
 	trimSessions(userId: string, keep: number): Promise<number>;
+	/**
+	 * Whether the account for `email` may be claimed with an emailed code at
+	 * checkout: it exists, its email is unverified and it has no orders.
+	 * Anyone else is asked to sign in.
+	 */
+	claimable(email: string): Promise<boolean>;
 	/** Whether a credential (password) account exists; Google-only accounts have none. */
 	hasPassword(userId: string): Promise<boolean>;
 	/** bcrypt check against the credential account; false when there is none. */
@@ -324,6 +330,21 @@ export function createAuthService({ db }: { db: Db }): AuthService {
 
 		async revokeAllSessions(userId) {
 			await db.delete(sessions).where(eq(sessions.userId, userId));
+		},
+
+		async claimable(email) {
+			const [user] = await db
+				.select({ id: users.id, emailVerified: users.emailVerified })
+				.from(users)
+				.where(sql`lower(${users.email}) = lower(${email})`)
+				.limit(1);
+			if (!user || user.emailVerified) return false;
+			const [order] = await db
+				.select({ id: orders.id })
+				.from(orders)
+				.where(eq(orders.user_id, user.id))
+				.limit(1);
+			return order === undefined;
 		},
 
 		async hasPassword(userId) {

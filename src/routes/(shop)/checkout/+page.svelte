@@ -20,6 +20,10 @@
 	const formError = $derived(form && 'error' in form ? form.error : null);
 	const fullName = $derived(form && 'fullName' in form ? form.fullName : '');
 	const email = $derived(form && 'email' in form ? form.email : '');
+	/** The account step found an unverified, order-less account for the email. */
+	const claimable = $derived(form && 'claimable' in form && form.claimable === true);
+	/** The claim code step: which address, and the "we emailed you" note. */
+	const claim = $derived(form && 'claim' in form && form.claim ? form.claim : null);
 </script>
 
 <Seo
@@ -123,8 +127,14 @@
 					<div class="core-lg px-7 py-9 sm:px-9 sm:py-10">
 						{#if data.signedIn}
 							<div class="mb-6">
-								<Alert variant="info">
-									You're signed in as {data.signedIn.email}. Complete your purchase below.
+								<Alert variant={data.claimed ? 'success' : 'info'}>
+									{#if data.claimed}
+										Welcome back. Your email is confirmed and you're signed in as
+										{data.signedIn.email}. After your purchase, choose a password from your profile
+										so you can sign in next time.
+									{:else}
+										You're signed in as {data.signedIn.email}. Complete your purchase below.
+									{/if}
 								</Alert>
 							</div>
 						{/if}
@@ -247,6 +257,60 @@
 								</a>.
 							</p>
 						</form>
+
+						{#if !data.signedIn && claim}
+							<form
+								method="POST"
+								action="?/claim"
+								use:enhance={() => {
+									isSubmitting = true;
+									return async ({ update }) => {
+										isSubmitting = false;
+										await update({ reset: false });
+									};
+								}}
+								class="mt-7 space-y-5 border-t border-charcoal-900/[0.07] pt-6"
+							>
+								<h2 class="subsection-heading">Claim your account</h2>
+								{#if claim.message}
+									<Alert variant="success">{claim.message}</Alert>
+								{/if}
+								<input type="hidden" name="email" value={claim.email} />
+								<Input
+									label="Six-digit code"
+									name="code"
+									inputmode="numeric"
+									autocomplete="one-time-code"
+									required
+									error={errors.code ?? errors.email}
+								/>
+								<button type="submit" class="btn-primary w-full" disabled={isSubmitting}>
+									Claim account and continue
+								</button>
+							</form>
+						{:else if !data.signedIn && claimable}
+							<form
+								method="POST"
+								action="?/sendClaimCode"
+								use:enhance={() => {
+									isSubmitting = true;
+									return async ({ update }) => {
+										isSubmitting = false;
+										await update({ reset: false });
+									};
+								}}
+								class="mt-7 border-t border-charcoal-900/[0.07] pt-6"
+							>
+								<input type="hidden" name="email" value={email} />
+								<p class="text-[14px] leading-relaxed text-charcoal-500">
+									If {email} is yours, we can email you a code that signs you in and confirms the address.
+									No password needed right now.
+								</p>
+								<button type="submit" class="btn-secondary mt-4 w-full" disabled={isSubmitting}>
+									Send me a code
+								</button>
+							</form>
+						{/if}
 
 						{#if !data.signedIn}
 							<p

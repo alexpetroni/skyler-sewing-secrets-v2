@@ -95,3 +95,17 @@ export const checkoutAccountSchema = v.object({
 	)
 });
 export type CheckoutAccountInput = v.InferOutput<typeof checkoutAccountSchema>;
+
+/** Asks for the claim code of an unverified, order-less account. */
+export const claimEmailSchema = v.object({ email: v.pipe(emailField, v.toLowerCase()) });
+
+/** The six-digit code from the claim email. */
+export const claimCodeSchema = v.object({
+	email: v.pipe(emailField, v.toLowerCase()),
+	code: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.nonEmpty('Enter the code from the email'),
+		v.regex(/^\d{6}$/, 'The code is six digits')
+	)
+});

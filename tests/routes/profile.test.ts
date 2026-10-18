@@ -42,6 +42,7 @@ describe('/profile', () => {
 		const event = await memberEvent(seeded.services, member.id, { url: '/profile' });
 		const page = (await load(event as unknown as LoadEvent)) as ProfileData;
 		expect(page.allAccess).toBe(true);
+		expect(page.hasPassword).toBe(true);
 		expect(page.profile).toMatchObject({ email: member.email, fullName: 'Member' });
 		expect(page.owned).toEqual([
 			{

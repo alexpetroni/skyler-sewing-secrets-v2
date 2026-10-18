@@ -235,6 +235,41 @@ Skyler's Sewing Secrets
 	};
 }
 
+/** The one-time code that lets a buyer claim an unverified account at checkout. */
+export function signInCodeEmail(code: string, siteUrl = DEFAULT_SITE_URL): EmailContent {
+	const safeCode = escapeHtml(code);
+
+	return {
+		subject: `${code} is your Skyler's Sewing Secrets code`,
+		html: layout(
+			siteUrl,
+			`
+				<h1 style="color: ${BRAND}; margin-bottom: 20px;">Your sign-in code</h1>
+
+				<p>Enter this code at checkout to confirm this email address is yours:</p>
+
+				<p style="font-size: 32px; letter-spacing: 8px; font-weight: bold; color: ${BRAND}; margin: 24px 0;">${safeCode}</p>
+
+				<p>The code expires in 10 minutes. If you didn't ask for it, you can safely ignore this email.</p>
+
+				<p>Best,<br>
+				<strong>Skyler's Sewing Secrets</strong></p>`
+		),
+		text: `
+Your sign-in code
+
+Enter this code at checkout to confirm this email address is yours:
+
+${code}
+
+The code expires in 10 minutes. If you didn't ask for it, you can safely ignore this email.
+
+Best,
+Skyler's Sewing Secrets
+		`.trim()
+	};
+}
+
 export interface ContactNotificationInput {
 	name: string;
 	email: string;

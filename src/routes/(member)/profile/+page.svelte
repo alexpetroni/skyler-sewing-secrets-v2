@@ -139,6 +139,16 @@
 					</div>
 				</dl>
 
+				{#if !data.hasPassword}
+					<div class="mt-8">
+						<Alert variant="info">
+							Your account has no password yet. To sign in next time, set one with
+							<a href="/auth/forgot-password" class="link">Set a password</a>: we'll email you a
+							link.
+						</Alert>
+					</div>
+				{/if}
+
 				<form method="POST" action="?/signOutEverywhere" class="mt-8">
 					<p class="text-[14px] leading-relaxed text-charcoal-500">
 						Signed in somewhere you no longer use? Sign out of every device, this one included.

@@ -9,10 +9,21 @@ import {
 	PromoRejectedError
 } from '#lib/server/modules/commerce/index.ts';
 import { promoRejectionMessage } from '#lib/shared/promo-messages.ts';
-import { checkoutAccountSchema, fieldErrors } from '#lib/shared/schemas/auth.ts';
+import { isDomainError } from '#lib/server/http/api.ts';
+import {
+	checkoutAccountSchema,
+	claimCodeSchema,
+	claimEmailSchema,
+	fieldErrors
+} from '#lib/shared/schemas/auth.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const ALREADY_REGISTERED = 'This email is already registered. Please sign in instead.';
+const CLAIMABLE =
+	'An account with this email exists but was never confirmed. We can email you a code to claim it.';
+const CLAIM_SENT = 'We emailed you a six-digit code. Enter it below to claim the account.';
+const CLAIM_FAILED = 'That code is not right or has expired. Request a new one and try again.';
+const CLAIM_NOT_OFFERED = 'This account cannot be claimed. Please sign in instead.';
 const ACCOUNT_FAILED = 'Could not create your account. Please try again.';
 const SIGN_IN_FAILED =
 	'Your account was created but we could not sign you in. Please sign in with the password you chose and return to checkout.';
@@ -29,13 +40,19 @@ const ACCOUNT_LIMIT = { max: 5, windowSeconds: 15 * 60 };
  * only then is the order created and the Stripe redirect issued. No admin
  * flag is ever derived from an email address.
  */
-export const load: PageServerLoad = async ({ locals, cookies }) => {
+export const load: PageServerLoad = async ({ locals, cookies, url }) => {
 	const { cart, cartCookie } = locals.services.commerce;
 	const quote = await cart.quote(cartCookie.read(cookies), cartViewer(locals));
 	if (quote.lines.length === 0) redirect(303, '/cart');
 	// A session without a profile is stale: treat it as signed out.
 	const signedIn = locals.user && locals.profile ? { email: locals.user.email } : null;
-	return { quote, signedIn, googleEnabled: locals.services.googleEnabled };
+	return {
+		quote,
+		signedIn,
+		googleEnabled: locals.services.googleEnabled,
+		// Just claimed an account with an emailed code: the flash about setting a password.
+		claimed: signedIn !== null && url.searchParams.has('claimed')
+	};
 };
 
 export const actions: Actions = {
@@ -64,6 +81,11 @@ export const actions: Actions = {
 			if (!limit.allowed) return fail(429, { ...echo, error: TOO_MANY_ATTEMPTS });
 
 			if (await services.users.findUserIdByEmail(email)) {
+				// An unverified, order-less account (a pre-registration, perhaps
+				// by this very buyer) may be claimed with an emailed code.
+				if (await services.users.claimable(email)) {
+					return fail(400, { ...echo, errors: { email: CLAIMABLE }, claimable: true });
+				}
 				return fail(400, { ...echo, errors: { email: ALREADY_REGISTERED } });
 			}
 			try {
@@ -126,5 +148,53 @@ export const actions: Actions = {
 		}
 
 		redirect(303, url, { external: true });
+	},
+
+	/** Emails the claim code; only unverified, order-less accounts are offered it. */
+	sendClaimCode: async (event) => {
+		const { services } = event.locals;
+		if (event.locals.user && event.locals.profile) redirect(303, '/checkout');
+		const parsed = v.safeParse(claimEmailSchema, await readForm(event.request));
+		if (!parsed.success) return fail(400, { email: '', errors: fieldErrors(parsed.issues) });
+		const { email } = parsed.output;
+
+		const limit = await services.limiter.consume(keyFor('checkout-account', event), ACCOUNT_LIMIT);
+		if (!limit.allowed) return fail(429, { email, error: TOO_MANY_ATTEMPTS });
+		if (!(await services.users.claimable(email))) {
+			return fail(400, { email, errors: { email: CLAIM_NOT_OFFERED } });
+		}
+		await services.auth.api.sendVerificationOTP({ body: { email, type: 'sign-in' } });
+		return { claim: { email, message: CLAIM_SENT } };
+	},
+
+	/** A correct code signs the claimant in and marks the email verified; checkout then continues. */
+	claim: async (event) => {
+		const { services } = event.locals;
+		if (event.locals.user && event.locals.profile) redirect(303, '/checkout');
+		const parsed = v.safeParse(claimCodeSchema, await readForm(event.request));
+		if (!parsed.success) {
+			return fail(400, { claim: { email: '', message: null }, errors: fieldErrors(parsed.issues) });
+		}
+		const { email, code } = parsed.output;
+		const claim = { email, message: null };
+		if (!(await services.users.claimable(email))) {
+			return fail(400, { claim, errors: { email: CLAIM_NOT_OFFERED } });
+		}
+
+		// The session cookie is set through the sveltekitCookies plugin.
+		let userId: string;
+		try {
+			const result = await services.auth.api.signInEmailOTP({
+				body: { email, otp: code },
+				headers: event.request.headers
+			});
+			userId = result.user.id;
+		} catch (err) {
+			if (isDomainError(err)) throw err;
+			services.logger.info('checkout claim refused', { requestId: event.locals.requestId });
+			return fail(400, { claim, errors: { code: CLAIM_FAILED } });
+		}
+		await services.users.trimSessions(userId, 5);
+		redirect(303, '/checkout?claimed=1');
 	}
 };

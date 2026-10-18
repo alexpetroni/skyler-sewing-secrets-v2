@@ -2,7 +2,7 @@ import { getRequestEvent } from '$app/server';
 import bcrypt from 'bcryptjs';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { twoFactor } from 'better-auth/plugins';
+import { emailOTP, twoFactor } from 'better-auth/plugins';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { schema, type Db } from '#lib/server/db/index.ts';
 
@@ -15,6 +15,8 @@ export interface CreateAuthOptions {
 	google?: { clientId: string; clientSecret: string };
 	/** Delivers the reset email; the mailer is injected so no module reads env or performs I/O here. */
 	sendPasswordReset: (to: string, url: string) => Promise<void>;
+	/** Delivers the one-time code that claims an unverified account at checkout. */
+	sendSignInCode: (to: string, code: string) => Promise<void>;
 }
 
 /** bcrypt cost used by Supabase Auth, whose hashes were migrated unchanged. */
@@ -24,7 +26,7 @@ const BCRYPT_COST = 10;
 export const TOTP_ISSUER = "Skyler's Sewing Secrets";
 
 export function createAuth(options: CreateAuthOptions) {
-	const { db, secret, baseURL, google, sendPasswordReset } = options;
+	const { db, secret, baseURL, google, sendPasswordReset, sendSignInCode } = options;
 
 	return betterAuth({
 		baseURL,
@@ -33,8 +35,10 @@ export function createAuth(options: CreateAuthOptions) {
 		advanced: {
 			database: {
 				// Tables use uuid primary keys (profiles.id and every user FK were
-				// migrated from Supabase as UUIDs).
-				generateId: () => crypto.randomUUID()
+				// migrated from Supabase as UUIDs). The named strategy, rather than
+				// a custom function, also makes Better Auth's deterministic
+				// single-use ids (the email OTP claim reserves one) UUID-shaped.
+				generateId: 'uuid'
 			}
 		},
 		emailAndPassword: {
@@ -98,7 +102,23 @@ export function createAuth(options: CreateAuthOptions) {
 				}
 			}
 		},
-		plugins: [twoFactor({ issuer: TOTP_ISSUER }), sveltekitCookies(getRequestEvent)]
+		plugins: [
+			twoFactor({ issuer: TOTP_ISSUER }),
+			// Account claim at checkout: a six-digit code to the address of an
+			// unverified account signs the claimant in and verifies the email.
+			// `disableSignUp` keeps it from creating accounts for unknown addresses.
+			emailOTP({
+				disableSignUp: true,
+				otpLength: 6,
+				expiresIn: 10 * 60,
+				allowedAttempts: 5,
+				sendVerificationOTP: async ({ email, otp, type }) => {
+					// Only the sign-in type is ever requested (checkout claim).
+					if (type === 'sign-in') await sendSignInCode(email, otp);
+				}
+			}),
+			sveltekitCookies(getRequestEvent)
+		]
 	});
 }
 

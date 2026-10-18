@@ -7,8 +7,9 @@ import {
 	newsletterWelcomeEmail,
 	orderConfirmationEmail,
 	passwordResetEmail,
-	welcomeEmail,
-	type EmailContent
+	signInCodeEmail,
+	type EmailContent,
+	welcomeEmail
 } from './index.ts';
 
 const SITE = 'https://beta.skylersewingsecrets.com';
@@ -70,6 +71,12 @@ const cases: TemplateCase[] = [
 		primaryLink: `${SITE}/auth/reset-password?token=abc123`
 	},
 	{
+		template: 'signInCodeEmail',
+		hostile: (value) => signInCodeEmail(value, SITE),
+		normal: () => signInCodeEmail('123456', SITE),
+		primaryLink: '123456'
+	},
+	{
 		template: 'contactNotificationEmail',
 		hostile: (value) =>
 			contactNotificationEmail({ name: value, email: value, subject: value, message: value }),
@@ -103,13 +110,13 @@ const cases: TemplateCase[] = [
 ];
 
 describe('email templates', () => {
-	it('cover every exported template (all seven)', () => {
+	it('cover every exported template (all eight)', () => {
 		const exported = Object.entries(marketing)
 			.filter(([key, value]) => key.endsWith('Email') && typeof value === 'function')
 			.map(([key]) => key)
 			.sort();
 		expect(cases.map((c) => c.template).sort()).toEqual(exported);
-		expect(exported).toHaveLength(7);
+		expect(exported).toHaveLength(8);
 	});
 
 	describe.each(cases)('$template', ({ hostile, normal, primaryLink }) => {

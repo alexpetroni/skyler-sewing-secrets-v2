@@ -6,6 +6,7 @@ export {
 	newsletterWelcomeEmail,
 	orderConfirmationEmail,
 	passwordResetEmail,
+	signInCodeEmail,
 	welcomeEmail,
 	type AccessRevokedInput,
 	type ContactNotificationInput,
