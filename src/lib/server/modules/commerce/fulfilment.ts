@@ -349,11 +349,24 @@ export function createFulfilmentService({
 		}
 	}
 
+	/** The Stripe object an event is about, so the admin can list an order's deliveries. */
+	function eventReference(event: GatewayEvent): string | null {
+		switch (event.type) {
+			case 'charge.refunded':
+			case 'charge.dispute.created':
+				return event.data.paymentIntentId;
+			case 'ignored':
+				return null;
+			default:
+				return event.data.id;
+		}
+	}
+
 	async function handleGatewayEvent(event: GatewayEvent): Promise<HandleEventResult> {
 		const type = event.type === 'ignored' ? event.data.stripeType : event.type;
 		const [inserted] = await db
 			.insert(webhook_events)
-			.values({ provider: PROVIDER, event_id: event.id, type })
+			.values({ provider: PROVIDER, event_id: event.id, type, reference: eventReference(event) })
 			.onConflictDoNothing()
 			.returning({ id: webhook_events.id });
 

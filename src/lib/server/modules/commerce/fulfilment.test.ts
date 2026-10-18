@@ -313,6 +313,7 @@ describe('createFulfilmentService', () => {
 				provider: 'stripe',
 				event_id: event.id,
 				type: 'checkout.session.completed',
+				reference: order.sessionId,
 				error: null
 			});
 			expect(rows[0].processed_at).not.toBeNull();

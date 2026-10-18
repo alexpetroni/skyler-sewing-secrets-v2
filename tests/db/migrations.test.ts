@@ -79,11 +79,36 @@ describe('migrations applied to PGlite', () => {
 		);
 	});
 
-	it('records the two legacy migrations, 0002 and 0003 in the drizzle ledger', async () => {
+	it('records the two legacy migrations, 0002, 0003 and 0004 in the drizzle ledger', async () => {
 		const result = await db().execute<{ count: number }>(
 			sql`SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations`
 		);
-		expect(result.rows[0]?.count).toBe(4);
+		expect(result.rows[0]?.count).toBe(5);
+	});
+
+	it('adds the nullable admin columns of 0004 to orders and webhook_events', async () => {
+		const result = await db().execute<{
+			table_name: string;
+			column_name: string;
+			is_nullable: 'YES' | 'NO';
+			data_type: string;
+		}>(sql`
+			SELECT table_name, column_name, is_nullable, data_type FROM information_schema.columns
+			WHERE table_schema = 'public' AND (
+				(table_name = 'orders' AND column_name = 'admin_notes')
+				OR (table_name = 'webhook_events' AND column_name = 'reference')
+			)
+			ORDER BY table_name, column_name
+		`);
+		expect(result.rows).toEqual([
+			{ table_name: 'orders', column_name: 'admin_notes', is_nullable: 'YES', data_type: 'text' },
+			{
+				table_name: 'webhook_events',
+				column_name: 'reference',
+				is_nullable: 'YES',
+				data_type: 'text'
+			}
+		]);
 	});
 
 	it('adds the nullable Markdown columns of 0003 to blog_posts and faq_items', async () => {

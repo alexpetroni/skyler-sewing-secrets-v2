@@ -2,7 +2,9 @@ import { pgTable, uuid, text, integer, timestamp, jsonb, unique, index } from 'd
 import { profiles } from './profiles.ts';
 
 // Idempotency store for Stripe and Bunny deliveries: a webhook is processed
-// at most once per (provider, event_id).
+// at most once per (provider, event_id). `reference` (0004_admin) is the
+// provider object the event is about (checkout session or payment intent id),
+// so an order's admin page can list the deliveries that concern it.
 export const webhook_events = pgTable(
 	'webhook_events',
 	{
@@ -10,13 +12,17 @@ export const webhook_events = pgTable(
 		provider: text('provider').notNull(),
 		event_id: text('event_id').notNull(),
 		type: text('type').notNull(),
+		reference: text('reference'),
 		received_at: timestamp('received_at', { withTimezone: true, mode: 'string' })
 			.notNull()
 			.defaultNow(),
 		processed_at: timestamp('processed_at', { withTimezone: true, mode: 'string' }),
 		error: text('error')
 	},
-	(t) => [unique('webhook_events_provider_event_id_unique').on(t.provider, t.event_id)]
+	(t) => [
+		unique('webhook_events_provider_event_id_unique').on(t.provider, t.event_id),
+		index('idx_webhook_events_reference').on(t.provider, t.reference)
+	]
 );
 
 // Written by every admin mutation in the same transaction as the change.

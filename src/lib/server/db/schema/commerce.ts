@@ -39,6 +39,8 @@ export const orders = pgTable(
 		stripe_checkout_session_id: text('stripe_checkout_session_id').unique(),
 		stripe_payment_intent_id: text('stripe_payment_intent_id'),
 		promo_code_id: uuid('promo_code_id').references(() => promo_codes.id),
+		// Free-text notes the admin keeps on an order (0004_admin).
+		admin_notes: text('admin_notes'),
 		created_at: timestamp('created_at', { withTimezone: true, mode: 'string' })
 			.notNull()
 			.defaultNow(),
