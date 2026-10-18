@@ -1,0 +1,367 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   Skyler's Sewing Secrets — Editorial Luxury design system
+   Warm parchment ground, high-contrast serif display, muted sage counterweight.
+   Depth comes from nested bezels and diffused light, never from hard borders.
+   ========================================================================== */
+
+@layer base {
+	:root {
+		--ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+		--ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+		--rule: rgba(56, 50, 45, 0.08);
+	}
+
+	html {
+		@apply scroll-smooth;
+		-webkit-text-size-adjust: 100%;
+	}
+
+	body {
+		@apply bg-ivory-50 font-sans text-charcoal-700 antialiased;
+		font-size: 16px;
+		line-height: 1.6;
+		font-feature-settings: 'ss01', 'cv01';
+	}
+
+	/* Film grain — fixed layer so it never repaints with scroll. */
+	body::after {
+		content: '';
+		position: fixed;
+		inset: 0;
+		z-index: 30;
+		pointer-events: none;
+		opacity: 0.035;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+	}
+
+	h1, h2, h3, h4, h5, h6 {
+		@apply font-serif text-charcoal-900;
+		font-weight: 500;
+		line-height: 1.08;
+		letter-spacing: -0.015em;
+	}
+
+	::selection {
+		background-color: theme('colors.sage.200');
+		color: theme('colors.charcoal.900');
+	}
+
+	:focus-visible {
+		outline: 2px solid theme('colors.sage.500');
+		outline-offset: 3px;
+		border-radius: 2px;
+	}
+
+	/* Quiet, warm scrollbar rather than the OS default slab. */
+	* {
+		scrollbar-color: theme('colors.charcoal.200') transparent;
+		scrollbar-width: thin;
+	}
+}
+
+@layer components {
+	/* ---------------------------------------------------------------
+	   Double-bezel (Doppelrand): an inner plate seated in an outer tray.
+	   Radii are concentric — core radius = shell radius minus the padding.
+	   --------------------------------------------------------------- */
+	.shell {
+		@apply rounded-shell bg-white/50 p-1.5 ring-1 ring-inset ring-charcoal-900/[0.06] backdrop-blur-none;
+	}
+
+	.shell-lg {
+		@apply rounded-shell-lg bg-white/50 p-2 ring-1 ring-inset ring-charcoal-900/[0.06];
+	}
+
+	.shell-sage {
+		@apply rounded-shell bg-sage-100/60 p-1.5 ring-1 ring-inset ring-sage-700/10;
+	}
+
+	.core {
+		@apply rounded-core bg-white shadow-bezel;
+	}
+
+	.core-lg {
+		@apply rounded-core-lg bg-white shadow-bezel;
+	}
+
+	/* The full assembly, for the common case. */
+	.plate {
+		@apply rounded-shell bg-white/50 p-1.5 shadow-ambient ring-1 ring-inset ring-charcoal-900/[0.06];
+	}
+
+	.plate-inner {
+		@apply rounded-core bg-white p-7 shadow-bezel sm:p-8;
+	}
+
+	/* Legacy alias — pages still reach for .card. */
+	.card {
+		@apply rounded-shell bg-white p-1.5 shadow-ambient ring-1 ring-inset ring-charcoal-900/[0.06];
+	}
+
+	/* ---------------------------------------------------------------
+	   Buttons — pills with mass. Press interpolates, never snaps.
+	   --------------------------------------------------------------- */
+	.btn {
+		@apply relative inline-flex select-none items-center justify-center gap-2.5 rounded-full text-sm font-medium;
+		@apply transition-all duration-400 ease-fluid;
+		@apply active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+		padding: 0.75rem 1.5rem;
+	}
+
+	.btn-primary {
+		@apply btn bg-charcoal-900 text-ivory-50 shadow-ambient;
+		@apply hover:bg-charcoal-800 hover:shadow-lift;
+	}
+
+	.btn-accent {
+		@apply btn bg-brand-600 text-white shadow-ambient;
+		@apply hover:bg-brand-700 hover:shadow-lift;
+	}
+
+	.btn-sage {
+		@apply btn bg-sage-600 text-white shadow-ambient hover:bg-sage-700 hover:shadow-lift;
+	}
+
+	.btn-secondary {
+		@apply btn bg-white/70 text-charcoal-800 shadow-ambient ring-1 ring-inset ring-charcoal-900/[0.07];
+		@apply hover:bg-white hover:shadow-lift hover:ring-charcoal-900/[0.12];
+	}
+
+	.btn-ghost {
+		@apply btn text-charcoal-600 hover:bg-charcoal-900/[0.04] hover:text-charcoal-900;
+	}
+
+	.btn-sm {
+		@apply gap-2 text-[13px];
+		padding: 0.5rem 1.125rem;
+	}
+
+	.btn-lg {
+		@apply gap-3 text-base;
+		padding: 0.9375rem 1.75rem;
+	}
+
+	/* Button-in-button: the trailing glyph lives in its own island. */
+	.btn-orb {
+		@apply -mr-3 ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full;
+		@apply bg-white/15 transition-transform duration-400 ease-spring;
+		@apply group-hover:translate-x-1 group-hover:-translate-y-px group-hover:scale-105;
+	}
+
+	.btn-secondary .btn-orb,
+	.btn-ghost .btn-orb {
+		@apply bg-charcoal-900/[0.06];
+	}
+
+	.btn-lg .btn-orb {
+		@apply -mr-3.5 h-9 w-9;
+	}
+
+	.btn-sm .btn-orb {
+		@apply -mr-2.5 h-6 w-6;
+	}
+
+	/* ---------------------------------------------------------------
+	   Form fields — seated, not outlined.
+	   --------------------------------------------------------------- */
+	.input,
+	.textarea,
+	.select {
+		@apply block w-full rounded-2xl border-0 bg-white px-4 py-3 text-[15px] text-charcoal-900;
+		@apply shadow-[inset_0_1px_2px_rgba(56,50,45,0.05)] ring-1 ring-inset ring-charcoal-900/[0.09];
+		@apply transition-all duration-300 ease-fluid placeholder:text-charcoal-400;
+		@apply focus:bg-white focus:ring-2 focus:ring-inset focus:ring-sage-500;
+	}
+
+	.textarea {
+		@apply leading-relaxed;
+	}
+
+	.label {
+		@apply mb-2 block text-[13px] font-medium tracking-wide text-charcoal-600;
+	}
+
+	.link {
+		@apply font-medium text-charcoal-900 underline decoration-gold-400 decoration-1 underline-offset-4;
+		@apply transition-colors duration-300 ease-fluid hover:decoration-charcoal-900;
+	}
+
+	/* ---------------------------------------------------------------
+	   Spatial rhythm
+	   --------------------------------------------------------------- */
+	.container-narrow {
+		@apply mx-auto max-w-3xl px-5 sm:px-8;
+	}
+
+	.container-default {
+		@apply mx-auto max-w-7xl px-5 sm:px-8;
+	}
+
+	.container-wide {
+		@apply mx-auto max-w-[88rem] px-5 sm:px-8;
+	}
+
+	.section {
+		@apply py-24 sm:py-32 lg:py-40;
+	}
+
+	.section-tight {
+		@apply py-20 sm:py-24;
+	}
+
+	.section-alt {
+		@apply bg-ivory-100;
+	}
+
+	.rule {
+		@apply border-t border-charcoal-900/[0.07];
+	}
+
+	.divider {
+		@apply border-t border-charcoal-900/[0.07];
+	}
+
+	/* ---------------------------------------------------------------
+	   Typography scale
+	   --------------------------------------------------------------- */
+	.eyebrow {
+		@apply inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 ring-1 ring-inset ring-charcoal-900/[0.07];
+		@apply text-[10px] font-semibold uppercase tracking-eyebrow text-charcoal-500;
+	}
+
+	.eyebrow-sage {
+		@apply eyebrow bg-sage-100/70 text-sage-700 ring-sage-700/10;
+	}
+
+	.display {
+		@apply font-serif text-charcoal-900;
+		font-size: clamp(2.75rem, 7.5vw, 5.5rem);
+		font-weight: 500;
+		line-height: 0.98;
+		letter-spacing: -0.025em;
+	}
+
+	.page-title {
+		@apply font-serif text-charcoal-900;
+		font-size: clamp(2.25rem, 5vw, 3.75rem);
+		font-weight: 500;
+		line-height: 1.02;
+		letter-spacing: -0.02em;
+	}
+
+	.section-title,
+	.section-heading {
+		@apply font-serif text-charcoal-900;
+		font-size: clamp(1.875rem, 3.6vw, 3rem);
+		font-weight: 500;
+		line-height: 1.06;
+		letter-spacing: -0.02em;
+	}
+
+	.subsection-heading {
+		@apply font-serif text-[1.5rem] font-medium leading-tight text-charcoal-900 sm:text-[1.75rem];
+	}
+
+	.card-title {
+		@apply font-serif text-[1.375rem] font-medium leading-snug text-charcoal-900;
+	}
+
+	.section-header {
+		@apply mx-auto mb-16 max-w-2xl text-center sm:mb-20;
+	}
+
+	.section-description,
+	.body-lg {
+		@apply text-[17px] leading-[1.7] text-charcoal-600 sm:text-lg;
+	}
+
+	.body-base {
+		@apply text-[15px] leading-[1.7] text-charcoal-600 sm:text-base;
+	}
+
+	.meta {
+		@apply text-[13px] leading-normal text-charcoal-500;
+	}
+
+	/* Long-form article body — serif headings, generous measure, warm rules. */
+	.prose-editorial {
+		@apply prose prose-lg max-w-none text-charcoal-700;
+		@apply prose-headings:font-serif prose-headings:font-medium prose-headings:tracking-tight prose-headings:text-charcoal-900;
+		@apply prose-p:leading-[1.8] prose-p:text-charcoal-600;
+		@apply prose-a:font-medium prose-a:text-charcoal-900 prose-a:decoration-gold-400 prose-a:underline-offset-4;
+		@apply prose-strong:text-charcoal-900 prose-li:text-charcoal-600 prose-li:marker:text-charcoal-300;
+		@apply prose-blockquote:border-l-2 prose-blockquote:border-gold-400 prose-blockquote:not-italic prose-blockquote:font-serif prose-blockquote:text-charcoal-700;
+		@apply prose-hr:border-charcoal-900/10 prose-img:rounded-core prose-img:shadow-ambient;
+		@apply prose-code:text-charcoal-800 prose-pre:rounded-core prose-pre:bg-charcoal-950;
+	}
+}
+
+@layer utilities {
+	.text-balance {
+		text-wrap: balance;
+	}
+
+	.text-pretty {
+		text-wrap: pretty;
+	}
+
+	/* Scroll entry — heavy, unhurried, GPU-only. Set by the `reveal` action. */
+	.reveal {
+		opacity: 0;
+		transform: translate3d(0, 3rem, 0);
+		filter: blur(6px);
+		transition:
+			opacity 900ms var(--ease-soft),
+			transform 900ms var(--ease-soft),
+			filter 900ms var(--ease-soft);
+		transition-delay: var(--reveal-delay, 0ms);
+	}
+
+	.reveal.is-revealed {
+		opacity: 1;
+		transform: translate3d(0, 0, 0);
+		filter: blur(0);
+	}
+
+	/* Ambient light pooled behind sections — purely decorative. */
+	.aurora {
+		@apply pointer-events-none absolute -z-10 rounded-full blur-3xl;
+	}
+
+	.hairline-b {
+		box-shadow: 0 1px 0 var(--rule);
+	}
+
+	.mask-fade-r {
+		mask-image: linear-gradient(to right, black 78%, transparent 100%);
+	}
+
+	.mask-fade-b {
+		mask-image: linear-gradient(to bottom, black 72%, transparent 100%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	.reveal {
+		opacity: 1;
+		transform: none;
+		filter: none;
+		transition: none;
+	}
+
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+	}
+}

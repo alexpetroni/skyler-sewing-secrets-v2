@@ -1,0 +1,72 @@
+[
+  {
+    "question": "Who is this for?",
+    "answer": "This course is for anyone who already sews and wants their work to look cleaner, more refined, and truly professional. It's designed for home sewists, dressmakers, and professionals who care about details, finishing, and the discipline behind couture-level garments.",
+    "category": "General",
+    "order_index": 1,
+    "is_published": true
+  },
+  {
+    "question": "Is this course suitable for beginners?",
+    "answer": "This is not a beginner sewing course. Basic machine handling and sewing knowledge are assumed. The focus is on couture and high-end techniques that build on existing skills rather than starting from zero.",
+    "category": "General",
+    "order_index": 2,
+    "is_published": true
+  },
+  {
+    "question": "What exactly will I learn inside the course?",
+    "answer": "You'll learn the techniques and habits used in couture and professional workrooms — how to prepare, stitch, press, finish, and assemble garments so they look neat, balanced, and intentional, both inside and out. These are the details that elevate work from \"well made\" to \"beautifully made.\"",
+    "category": "Course Content",
+    "order_index": 3,
+    "is_published": true
+  },
+  {
+    "question": "How is the course structured?",
+    "answer": "The course is divided into six core modules with over 270 minutes of step-by-step video lessons, plus a bonus module showing the full process of making a Chanel-style skirt from scratch. Lessons are clear, visual, and focused on hands-on techniques.",
+    "category": "Course Content",
+    "order_index": 4,
+    "is_published": true
+  },
+  {
+    "question": "How long will I have access to the course?",
+    "answer": "Access is unlimited. Once enrolled, you can return to the lessons anytime and work at your own pace, without time limits or subscriptions.",
+    "category": "Access",
+    "order_index": 5,
+    "is_published": true
+  },
+  {
+    "question": "Do I need special tools or expensive equipment?",
+    "answer": "No specialized or industrial equipment is required. Most techniques can be done with standard sewing tools. The emphasis is on method, precision, and mindset — not on expensive machines.",
+    "category": "General",
+    "order_index": 6,
+    "is_published": true
+  },
+  {
+    "question": "Is this about design or pattern drafting?",
+    "answer": "No. The course focuses entirely on sewing and construction techniques. It does not cover garment design or pattern drafting, but rather how to execute sewing at a high, professional level.",
+    "category": "Course Content",
+    "order_index": 7,
+    "is_published": true
+  },
+  {
+    "question": "What makes this course different from other sewing courses?",
+    "answer": "This course focuses on the quiet knowledge usually learned only inside couture and professional workrooms — techniques that are rarely taught openly. It's about slowing down, understanding why details matter, and developing the habits that lead to consistently refined results.",
+    "category": "General",
+    "order_index": 8,
+    "is_published": true
+  },
+  {
+    "question": "Do you offer refunds?",
+    "answer": "You cannot get a refund on courses outside the 14 calendar day cooling off period. By starting your course you are deemed to have begun and to have acknowledged that your right to cancel and receive a refund will be lost. Once you have started streaming, refunds are not possible. For full details, please see our <a href=\"/legal/terms-and-conditions\" class=\"text-brand-600 hover:text-brand-700 underline\">Terms and Conditions</a>.",
+    "category": "Billing",
+    "order_index": 9,
+    "is_published": true
+  },
+  {
+    "question": "Do I receive a certificate after completing the course?",
+    "answer": "No formal certificate is provided. This course focuses on practical knowledge and skill development rather than accreditation. The value lies in what you are able to make and how your work improves — your garments become the proof of what you've learned.",
+    "category": "General",
+    "order_index": 10,
+    "is_published": true
+  }
+]

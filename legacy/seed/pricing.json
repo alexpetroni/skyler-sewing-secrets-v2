@@ -1,0 +1,40 @@
+{
+  "pricing_config": {
+    "name": "Lifetime Access",
+    "base_price": 14900,
+    "currency": "gbp",
+    "is_active": true
+  },
+  "promo_codes": [
+    {
+      "code": "WELCOME10",
+      "description": "10% off for new subscribers",
+      "discount_type": "percentage",
+      "discount_value": 10,
+      "max_uses": null,
+      "valid_from": "2024-01-01T00:00:00Z",
+      "valid_until": null,
+      "is_active": true
+    },
+    {
+      "code": "SUMMER20",
+      "description": "Summer sale - 20% off",
+      "discount_type": "percentage",
+      "discount_value": 20,
+      "max_uses": 100,
+      "valid_from": "2024-06-01T00:00:00Z",
+      "valid_until": "2024-08-31T23:59:59Z",
+      "is_active": false
+    },
+    {
+      "code": "VIP50",
+      "description": "VIP discount - fixed amount off",
+      "discount_type": "fixed",
+      "discount_value": 5000,
+      "max_uses": 10,
+      "valid_from": "2024-01-01T00:00:00Z",
+      "valid_until": null,
+      "is_active": true
+    }
+  ]
+}

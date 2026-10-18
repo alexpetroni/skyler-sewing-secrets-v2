@@ -1,0 +1,32 @@
+[
+  {
+    "author_name": "Emma Thompson",
+    "author_title": "Fashion Design Student",
+    "country": "Saudi Arabia",
+    "content": "As a fashion student, I thought I knew the basics. Skyler showed me techniques I'd never seen in any textbook. The zipper module alone was worth the entire course price. My tutors have noticed the improvement in my work!",
+    "rating": 5,
+    "is_featured": true,
+    "order_index": 1,
+    "is_published": true
+  },
+  {
+    "author_name": "McKenna",
+    "author_title": "Fashion Design Student",
+    "country": "UK",
+    "content": "Skyler has taught me so many techniques and lessons within garment construction, always with a resolution for any problem and followed with a smile. Her experience alone is enough, but the talent and skill this woman has shared is something I'll always be grateful for. I couldn't recommend her enough!",
+    "rating": 5,
+    "is_featured": true,
+    "order_index": 2,
+    "is_published": true
+  },
+  {
+    "author_name": "Sam",
+    "author_title": "Fashion Design Student",
+    "country": "UK",
+    "content": "When I first got to Skyler I couldn't even thread a machine without help let alone sew in a straight line but with her lessons I was soon confidently putting garments together. Skyler is insanely knowledgeable about tailoring and draping and her lessons have put me on a path I didn't think possible. Learning to sew can be stressful but Skyler's patience and ability to make people feel at ease makes the process both enlightening and enjoyable. If you want to learn how to sew to a professional standard while having fun then this is the teacher for you.",
+    "rating": 5,
+    "is_featured": true,
+    "order_index": 3,
+    "is_published": true
+  }
+]

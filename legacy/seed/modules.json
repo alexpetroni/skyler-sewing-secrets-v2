@@ -1,0 +1,65 @@
+[
+  {
+    "title": "Basics",
+    "slug": "basics",
+    "description": "Master fundamental sewing techniques including tools, fabric cutting, machine sewing, and essential hand stitches that form the foundation of all your future projects.",
+    "order_index": 1,
+    "is_published": true,
+    "is_bonus": false,
+    "thumbnail_url": "https://skyler-storage.b-cdn.net/images/modules/basics-thumb.jpg"
+  },
+  {
+    "title": "Seams",
+    "slug": "seams",
+    "description": "Learn professional seam finishing techniques including French seams, pin hems, flat felled seams, and various binding methods to give your garments a polished, haute couture finish.",
+    "order_index": 2,
+    "is_published": true,
+    "is_bonus": false,
+    "thumbnail_url": "https://skyler-storage.b-cdn.net/images/modules/seams-thumb.jpg"
+  },
+  {
+    "title": "Zippers",
+    "slug": "zippers",
+    "description": "Conquer your fear of zippers with three essential techniques: covered zips for a seamless look, exposed zips for a modern edge, and invisible zips in French seams for that professional finish.",
+    "order_index": 3,
+    "is_published": true,
+    "is_bonus": false,
+    "thumbnail_url": "https://skyler-storage.b-cdn.net/images/modules/zippers-thumb.jpg"
+  },
+  {
+    "title": "Shapes",
+    "slug": "shapes",
+    "description": "Create beautiful details with straps, rouleaux, belts, collar corners, curves with binding, piping, and mitred corners. Plus learn about corset boning for structured garments.",
+    "order_index": 4,
+    "is_published": true,
+    "is_bonus": false,
+    "thumbnail_url": "https://skyler-storage.b-cdn.net/images/modules/shapes-thumb.jpg"
+  },
+  {
+    "title": "Pockets",
+    "slug": "pockets",
+    "description": "Add functional and beautiful pockets to your garments. Learn rounded pockets, lined pockets, side pockets in French seams, and the elegant Dior flap pocket technique.",
+    "order_index": 5,
+    "is_published": true,
+    "is_bonus": false,
+    "thumbnail_url": "https://skyler-storage.b-cdn.net/images/modules/pockets-thumb.jpg"
+  },
+  {
+    "title": "Fabric Manipulation",
+    "slug": "fabric-manipulation",
+    "description": "Transform plain fabric into works of art with lace applique, gathered frills, and pintucks. These techniques add dimension and interest to any garment.",
+    "order_index": 6,
+    "is_published": true,
+    "is_bonus": false,
+    "thumbnail_url": "https://skyler-storage.b-cdn.net/images/modules/fabric-manipulation-thumb.jpg"
+  },
+  {
+    "title": "Bonus: Chanel Skirt",
+    "slug": "bonus-chanel-skirt",
+    "description": "Put all your skills together in this comprehensive bonus module where you'll create your very own classic Chanel-style skirt from start to finish.",
+    "order_index": 7,
+    "is_published": true,
+    "is_bonus": true,
+    "thumbnail_url": "https://skyler-storage.b-cdn.net/images/modules/chanel-skirt-thumb.jpg"
+  }
+]

@@ -1,0 +1,124 @@
+[
+  {
+    "name": "Cotton",
+    "slug": "cotton",
+    "image": "/images/fabrics/cotton.jpg",
+    "weight": "Light to Medium",
+    "difficulty": "Beginner",
+    "description": "Cotton is a fantastic fabric to sew with, making it perfect for beginners! It's easy to work with and can be used for a variety of garments, including dresses, skirts, and even jackets.",
+    "tips": "For the best results, I recommend using flat-felled seam for shirts or sporty dresses to give them a clean, durable finish. Alternatively, an overlock stitch or a wider French seam is a great way to neatly finish seam allowances. Topstitches can add strength and style.",
+    "recommended_techniques": ["Flat-felled seam", "French seam", "Overlock stitch", "Topstitching"],
+    "order_index": 1
+  },
+  {
+    "name": "Jersey",
+    "slug": "jersey",
+    "image": "/images/fabrics/jersey.jpg",
+    "weight": "Light to Medium",
+    "difficulty": "Intermediate",
+    "description": "Jersey is a beautifully draping fabric, making it a great choice for comfortable garments. Even Coco Chanel embraced jersey for her iconic dresses - proof of its timeless appeal!",
+    "tips": "Finding the perfect machine needle can be a challenge. I find that stretch needles or ballpoint needles in size 70/10 or 75/11 work best, especially for delicate silk jerseys. Using the right needle is essential to prevent damage to the knit. For stitching, zig-zag, overlock or babylock with specialised threads ensure flexibility and durability. To help garments maintain their shape, fine silicone elastic is a great addition to shoulders, neckline or armhole seam allowances.",
+    "recommended_techniques": ["Zig-zag stitch", "Overlock", "Babylock", "Silicone elastic reinforcement"],
+    "order_index": 2
+  },
+  {
+    "name": "Silk Satin",
+    "slug": "silk-satin",
+    "image": "/images/fabrics/silk-satin.jpg",
+    "weight": "Light",
+    "difficulty": "Advanced",
+    "description": "Silk satin has been a symbol of luxury and glamour since the days of the Silk Road. Its rich sheen and fluid drape make it a favorite for high-end fashion, but working with it requires precision.",
+    "tips": "To maintain accuracy while cutting, placing the silk on paper helps prevent shifting. Staystitching on lightweight paper further ensures the fabric retains its shape. For sewing, Microtex or Sharps needles in sizes 60/8 or 70/10 are ideal, as they glide through the delicate fibers without causing damage. Always use sharp scissors and avoid damaged needles to preserve the fabric integrity. For flawless finish, French seams and pin hems are the perfect choices, giving your garments a couture-quality touch with elegant drape and movement - worthy of the red carpet!",
+    "recommended_techniques": ["French seam", "Pin hem", "Staystitching on paper", "Microtex needles"],
+    "order_index": 3
+  },
+  {
+    "name": "Organza",
+    "slug": "organza",
+    "image": "/images/fabrics/organza.jpg",
+    "weight": "Light",
+    "difficulty": "Advanced",
+    "description": "There are three types of organza: single - very sheer, double - medium weight, and triple - a more opaque version. Organza is another unpredictable fabric with a crisp, rice-paper-like texture with no natural drape.",
+    "tips": "Like other delicate, silky materials, I prefer to stitch it on paper and use a sharp, brand-new sewing machine needle to prevent damage to its fine fibers. When sewing, I rely on French seams, pin hems, or even flat felled seams for a clean finish. Organza demands precision - any sloppy work looks noticeably cheap. Beyond garment construction, organza is also used as an interlining in couture sewing, providing structure where fusible interlining isn't an option.",
+    "recommended_techniques": ["French seam", "Pin hem", "Flat felled seam", "Stitch on paper"],
+    "order_index": 4
+  },
+  {
+    "name": "Velvet",
+    "slug": "velvet",
+    "image": "/images/fabrics/tweed.jpg",
+    "weight": "Medium",
+    "difficulty": "Advanced",
+    "description": "Velvet can be very challenging to work with due to its pile and luxurious texture. This sumptuous fabric requires special handling to achieve professional results.",
+    "tips": "Cut each panel on a single layer, ensuring all pieces follow the same grain - especially the bias cuts - to keep the pile aligned in one direction. When sewing two layers together, pin diagonally to prevent shifting while sewing, and stitch in the direction of the pile. Steam rather than press, placing a towel underneath to avoid crushing the pile. Instead of finishing seam allowances, I prefer to line the velvet for a cleaner, more refined look.",
+    "recommended_techniques": ["Single layer cutting", "Diagonal pinning", "Steam pressing", "Lining"],
+    "order_index": 5
+  },
+  {
+    "name": "Sequins",
+    "slug": "sequins",
+    "image": "/images/fabrics/sequin.jpg",
+    "weight": "Medium",
+    "difficulty": "Advanced",
+    "description": "Sequins require patience - but the result is worth it. This glamorous fabric can create spectacular, red-carpet-worthy pieces when handled with care.",
+    "tips": "When cutting, use separate scissors, as sequins can quickly dull the blades. Cut each pattern piece on a single layer, with the right side facing up, to follow the grain of the sequins accurately. Use sharp needles and sew slowly, only when you're certain of the final stitching, as needle holes will be visible permanently in the sequins. Test your fabric first. If the sequins are small, you may be able to stitch through them; otherwise, you'll need to remove or break them. Be careful not to cut the thread, as sequins are typically sewn on with a chain stitch. Avoid using a hot iron, as sequins can melt, shrink or change color. For finishing the inside, seam allowances can be bound with bias tape, Hong Kong binding, or simply by lining the garment.",
+    "recommended_techniques": ["Single layer cutting", "Bias tape binding", "Hong Kong binding", "Lining"],
+    "order_index": 6
+  },
+  {
+    "name": "Lace",
+    "slug": "lace",
+    "image": "/images/fabrics/lace.jpg",
+    "weight": "Light",
+    "difficulty": "Advanced",
+    "description": "Lace is the most romantic fabric... Whether used for evening gowns, wedding dresses, or delicate appliques, lace always evokes sensual femininity. J'adore!",
+    "tips": "I recommend cutting each panel separately on paper, carefully following the lace's direction. Use sharp, fine needles and opt for French seams or bind the seam allowances with tulle, using the Hong Kong binding method for a flawless finish.",
+    "recommended_techniques": ["French seam", "Hong Kong binding with tulle", "Cut on paper", "Fine needles"],
+    "order_index": 7
+  },
+  {
+    "name": "Wool",
+    "slug": "wool",
+    "image": "/images/fabrics/tweed.jpg",
+    "weight": "Medium to Heavy",
+    "difficulty": "Intermediate",
+    "description": "Wool is another timeless and truly remarkable fabric. Wool crepe drapes beautifully, pleats perfectly and holds its shape wonderfully.",
+    "tips": "For a sophisticated, luxurious feel, I recommend lining it with crepe de chine, because this elegant, high-end fabric deserves nothing less. However, if you choose not to, you can always overlock or bind the seam allowances for a clean finish. Wool really thrives with hand-stitching techniques, so don't be afraid to get creative and add your personal touch. Be bold and let your craftsmanship shine to make your garment unique.",
+    "recommended_techniques": ["Hand-stitching", "Crepe de chine lining", "Overlock", "Binding"],
+    "order_index": 8
+  },
+  {
+    "name": "Georgette",
+    "slug": "georgette",
+    "image": "/images/fabrics/georgette.jpg",
+    "weight": "Light",
+    "difficulty": "Advanced",
+    "description": "If there is one fabric that embodies elegance and movement, it's georgette. This dreamy textile flutters at the slightest breath of air, making it a delight to wear but a challenge to cut.",
+    "tips": "To keep it from shifting, always stabilize it on lightweight paper with pins before cutting. And for absolute precision, cut each panel individually - this ensures you stay on grain. When it comes to stitching, handle georgette with maximum care. Use the finest machine needle, because once damaged, this delicate beauty doesn't forgive. For a couture-worthy look, use French seams, pin hems or self-binding with georgette or organza. The result? A garment that drapes like a dream, flows effortlessly, and takes gathers, pleats and pintucks like a pro - truly one of the most versatile fabrics out there! Trust me, once you master georgette, there's no going back!",
+    "pro_tip": "Always keep a skin-nude silk georgette in your stash for base, bindings, facings and many more.",
+    "recommended_techniques": ["French seam", "Pin hem", "Self-binding", "Stitch on paper"],
+    "order_index": 9
+  },
+  {
+    "name": "Tulle",
+    "slug": "tulle",
+    "image": "/images/fabrics/tulle.jpg",
+    "weight": "Very Light",
+    "difficulty": "Intermediate",
+    "description": "Let's get one thing straight - tulle is NOT a mesh! This sheer, magical fabric is my go-to for adding structure without weight.",
+    "tips": "Tulle is perfect for creating illusion necklines, deep V cutouts, or providing invisible support in gowns. It's the secret weapon for reinforcing fabric under zippers, binding delicate lace, or even acting as an interlining for organza and other sheer textiles. When working with tulle, cut it carefully and staystitch it on paper to keep it from shifting and stretching - you don't want snags ruining your masterpiece! Unless you're working with silk tulle, keep the iron at bay, or risk irreversible meltdown (literally).",
+    "recommended_techniques": ["Staystitching on paper", "No heat pressing", "Binding", "Interlining"],
+    "order_index": 10
+  },
+  {
+    "name": "Chiffon",
+    "slug": "chiffon",
+    "image": "/images/fabrics/chiffon.jpg",
+    "weight": "Very Light",
+    "difficulty": "Advanced",
+    "description": "Chiffon is an ethereal, gossamer-like fabric that creates stunning, flowing garments. Its sheer quality and delicate nature make it a favorite for romantic and formal designs.",
+    "tips": "Like georgette, chiffon requires careful handling. Stabilize on paper before cutting and use sharp, fine needles. French seams are essential for a clean finish as raw edges will be visible. Consider using silk thread for the most invisible seams.",
+    "recommended_techniques": ["French seam", "Pin hem", "Stitch on paper", "Fine needles"],
+    "order_index": 11
+  }
+]
