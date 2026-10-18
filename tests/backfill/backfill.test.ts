@@ -170,7 +170,8 @@ async function seedLegacy(db: Db): Promise<Seed> {
 				title: 'Reading',
 				slug: 'reading',
 				lesson_type: 'article',
-				content: '<p>Pressing matters.</p>',
+				// Legacy admin HTML is sanitised on the way into content_html.
+				content: '<p onclick="steal()">Pressing matters.</p><script>steal()</script>',
 				order_index: 3
 			},
 			{
@@ -380,7 +381,7 @@ describe('backfill runAll on legacy-shaped data', () => {
 			kind: 'article',
 			content_md: null,
 			content_html: '<p>Pressing matters.</p>',
-			content: '<p>Pressing matters.</p>'
+			content: '<p onclick="steal()">Pressing matters.</p><script>steal()</script>'
 		});
 		expect(lessonRows.filter((l) => l.kind === 'video')).toHaveLength(6);
 		// Legacy video_url is kept for the old app.

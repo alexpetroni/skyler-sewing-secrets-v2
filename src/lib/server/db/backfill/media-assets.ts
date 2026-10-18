@@ -1,4 +1,5 @@
 import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { renderMarkdown } from '../../modules/content/index.ts';
 import type { Db } from '../index.ts';
 import { lessons, media_assets } from '../schema/index.ts';
 
@@ -25,8 +26,9 @@ interface PendingAsset {
  * Creates one `media_assets` row (status `ready`) per distinct Bunny video
  * referenced by `lessons.video_url`, links every such lesson through
  * `media_asset_id`, and converts legacy article lessons to `kind = 'article'`
- * with `content_html = content` (admin-authored HTML, already trusted) and
- * `content_md = NULL`. Every statement only touches rows that still need the
+ * with `content_html` rendered from the legacy `content` HTML by
+ * `renderMarkdown` (HTML passes through Markdown and is then sanitised, so
+ * `content_html` only ever holds sanitiser output) and `content_md = NULL`. Every statement only touches rows that still need the
  * change, so a second run reports zeros.
  */
 export async function backfillMediaAssets(db: Db): Promise<MediaAssetCounts> {
@@ -91,10 +93,19 @@ export async function backfillMediaAssets(db: Db): Promise<MediaAssetCounts> {
 		.returning({ id: lessons.id });
 
 	const articles = await db
-		.update(lessons)
-		.set({ kind: 'article', content_md: null, content_html: lessons.content })
-		.where(and(eq(lessons.lesson_type, 'article'), ne(lessons.kind, 'article')))
-		.returning({ id: lessons.id });
+		.select({ id: lessons.id, content: lessons.content })
+		.from(lessons)
+		.where(and(eq(lessons.lesson_type, 'article'), ne(lessons.kind, 'article')));
+	for (const article of articles) {
+		await db
+			.update(lessons)
+			.set({
+				kind: 'article',
+				content_md: null,
+				content_html: renderMarkdown(article.content ?? '')
+			})
+			.where(eq(lessons.id, article.id));
+	}
 
 	return {
 		media_assets_inserted,
