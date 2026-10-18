@@ -163,6 +163,28 @@ describe('/checkout', () => {
 			expect(seeded.services.payments.sessions.size).toBe(0);
 		});
 
+		it('answers 429 to the sixth account attempt from one address within 15 minutes', async () => {
+			for (let attempt = 1; attempt <= 5; attempt++) {
+				const { result } = await submit(null, cart([seeded.single.id]), {
+					...NEW_BUYER,
+					email: 'nobody@example.com'
+				});
+				if (!isActionFailure(result)) throw new Error('expected a failure');
+				expect(result.status).toBe(400);
+			}
+
+			const { result } = await submit(null, cart([seeded.single.id]), NEW_BUYER);
+			if (!isActionFailure(result)) throw new Error('expected a failure');
+			expect(result.status).toBe(429);
+			expect(result.data).toEqual({
+				fullName: NEW_BUYER.fullName,
+				email: NEW_BUYER.email,
+				error: 'Too many attempts. Please wait a few minutes and try again.'
+			});
+			expect(await db().select().from(users)).toHaveLength(3);
+			expect(await db().select().from(orders)).toEqual([]);
+		});
+
 		it('validates the account form as legacy did', async () => {
 			const { result } = await submit(null, cart([seeded.single.id]), {
 				fullName: 'X',

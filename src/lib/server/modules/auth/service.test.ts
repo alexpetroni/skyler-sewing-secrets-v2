@@ -199,6 +199,47 @@ describe('createAuthService', () => {
 		});
 	});
 
+	it('trimSessions keeps the newest `keep` sessions of the user only', async () => {
+		const userId = await service().createCredentialUser({
+			email: 'many@example.com',
+			password: 'x'
+		});
+		const otherId = await service().createCredentialUser({
+			email: 'other@example.com',
+			password: 'x'
+		});
+		const base = Date.now();
+		for (let i = 0; i < 7; i++) {
+			await db()
+				.insert(sessions)
+				.values({
+					userId,
+					token: `token-${i}`,
+					createdAt: new Date(base + i * 1000),
+					expiresAt: new Date(base + 86_400_000)
+				});
+		}
+		await addSession(otherId);
+
+		expect(await service().trimSessions(userId, 5)).toBe(2);
+
+		const kept = await db()
+			.select({ token: sessions.token })
+			.from(sessions)
+			.where(eq(sessions.userId, userId))
+			.orderBy(sessions.token);
+		expect(kept.map((row) => row.token)).toEqual([
+			'token-2',
+			'token-3',
+			'token-4',
+			'token-5',
+			'token-6'
+		]);
+		expect(await db().select().from(sessions).where(eq(sessions.userId, otherId))).toHaveLength(1);
+		// Nothing to trim: no rows touched.
+		expect(await service().trimSessions(userId, 5)).toBe(0);
+	});
+
 	it('setAdmin refuses an actor without two-factor authentication and changes nothing', async () => {
 		const actorId = await createActor();
 		await db().update(users).set({ twoFactorEnabled: false }).where(eq(users.id, actorId));

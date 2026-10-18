@@ -50,6 +50,7 @@ export {
 } from './resend.ts';
 export {
 	createRequestLimiter,
+	hashedKey,
 	keyFor,
 	type LimitResult,
 	type LimitRule,

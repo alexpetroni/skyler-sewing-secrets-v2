@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import * as v from 'valibot';
 import { readForm } from '#lib/server/http/forms.ts';
 import { cartViewer } from '#lib/server/http/shop.ts';
+import { keyFor } from '#lib/server/platform/request-limits.ts';
 import {
 	EmptyCartError,
 	PromoInvalidError,
@@ -17,6 +18,10 @@ const SIGN_IN_FAILED =
 	'Your account was created but we could not sign you in. Please sign in with the password you chose and return to checkout.';
 const EMPTY_CART = 'Your cart is empty.';
 const GATEWAY_FAILED = 'Failed to create checkout session. Please try again.';
+const TOO_MANY_ATTEMPTS = 'Too many attempts. Please wait a few minutes and try again.';
+
+/** The account step creates users and signs them in outside Better Auth's HTTP limiter (security audit H5). */
+const ACCOUNT_LIMIT = { max: 5, windowSeconds: 15 * 60 };
 
 /**
  * Account-first checkout, as legacy: a signed-out buyer creates their account
@@ -34,7 +39,8 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 };
 
 export const actions: Actions = {
-	checkout: async ({ request, locals, cookies }) => {
+	checkout: async (event) => {
+		const { request, locals, cookies } = event;
 		const { services } = locals;
 		const { orders, cartCookie } = services.commerce;
 
@@ -50,6 +56,12 @@ export const actions: Actions = {
 			if (!parsed.success) return fail(400, { ...echo, errors: fieldErrors(parsed.issues) });
 			const { fullName, password } = parsed.output;
 			email = parsed.output.email;
+
+			const limit = await services.limiter.consume(
+				keyFor('checkout-account', event),
+				ACCOUNT_LIMIT
+			);
+			if (!limit.allowed) return fail(429, { ...echo, error: TOO_MANY_ATTEMPTS });
 
 			if (await services.users.findUserIdByEmail(email)) {
 				return fail(400, { ...echo, errors: { email: ALREADY_REGISTERED } });
@@ -81,6 +93,7 @@ export const actions: Actions = {
 				});
 				return fail(500, { ...echo, error: SIGN_IN_FAILED });
 			}
+			await services.users.trimSessions(userId, 5);
 		}
 
 		let orderId: string;

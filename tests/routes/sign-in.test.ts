@@ -35,7 +35,10 @@ describe('/auth/sign-in', () => {
 		});
 	});
 
-	function submit(fields: Record<string, string>): {
+	function submit(
+		fields: Record<string, string>,
+		clientAddress?: string
+	): {
 		event: FakeEvent;
 		run: () => unknown;
 	} {
@@ -45,6 +48,7 @@ describe('/auth/sign-in', () => {
 			method: 'POST',
 			url: '/auth/sign-in',
 			body,
+			clientAddress,
 			locals: { services, requestId: 'req-1' }
 		});
 		current.event = event;
@@ -125,6 +129,68 @@ describe('/auth/sign-in', () => {
 					submit({ email: EMAIL, password: PASSWORD, redirectTo: 'https://evil.com' }).run
 				)
 			).toBe('/library');
+		});
+
+		it('answers 429 to the 11th attempt from one address within a minute', async () => {
+			for (let attempt = 1; attempt <= 10; attempt++) {
+				const result = await submit({ email: EMAIL, password: 'wrong-password' }).run();
+				if (!isActionFailure(result)) throw new Error('expected a failure');
+				expect(result.status).toBe(400);
+			}
+
+			const { event, run } = submit({ email: EMAIL, password: PASSWORD });
+			const eleventh = await run();
+			if (!isActionFailure(eleventh)) throw new Error('expected a failure');
+			expect(eleventh.status).toBe(429);
+			expect(eleventh.data).toEqual({
+				email: EMAIL,
+				error: 'Too many sign-in attempts. Please wait a few minutes and try again.'
+			});
+			// The right password is not even tried.
+			expect(event.setCookies).toHaveLength(0);
+			expect(await db().select().from(sessions)).toHaveLength(0);
+
+			// Another address is still served (and the email counter is at 11 of 20).
+			expect(
+				await expectRedirect(submit({ email: EMAIL, password: PASSWORD }, '10.0.0.2').run)
+			).toBe('/library');
+		});
+
+		it('answers 429 to the 21st attempt on one email within 15 minutes, whatever the address', async () => {
+			for (let attempt = 1; attempt <= 20; attempt++) {
+				const result = await submit(
+					{ email: EMAIL.toUpperCase(), password: 'wrong-password' },
+					`10.0.${Math.floor(attempt / 10)}.${attempt}`
+				).run();
+				if (!isActionFailure(result)) throw new Error('expected a failure');
+				expect(result.status).toBe(400);
+			}
+
+			const blocked = await submit({ email: EMAIL, password: PASSWORD }, '10.0.9.9').run();
+			if (!isActionFailure(blocked)) throw new Error('expected a failure');
+			expect(blocked.status).toBe(429);
+
+			// Other accounts are unaffected.
+			await services.users.createCredentialUser({ email: 'other@example.com', password: PASSWORD });
+			expect(
+				await expectRedirect(
+					submit({ email: 'other@example.com', password: PASSWORD }, '10.0.9.9').run
+				)
+			).toBe('/library');
+		});
+
+		it('keeps only the five newest sessions after a sign-in', async () => {
+			for (let i = 0; i < 7; i++) {
+				await expectRedirect(submit({ email: EMAIL, password: PASSWORD }).run);
+			}
+			const rows = await db()
+				.select({ createdAt: sessions.createdAt })
+				.from(sessions)
+				.where(eq(sessions.userId, userId));
+			expect(rows).toHaveLength(5);
+			// The seven sign-ins happen inside a second: created order is kept by (createdAt, id).
+			expect(await signInCookie(services, EMAIL, PASSWORD)).toMatch(/better-auth\.session_token=/);
+			expect(await db().select().from(sessions).where(eq(sessions.userId, userId))).toHaveLength(6);
 		});
 
 		it('sends an active admin to /admin and a suspended admin to the normal target', async () => {

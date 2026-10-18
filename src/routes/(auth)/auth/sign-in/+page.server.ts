@@ -1,12 +1,20 @@
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import * as v from 'valibot';
 import { readForm } from '#lib/server/http/forms.ts';
+import { hashedKey, keyFor } from '#lib/server/platform/request-limits.ts';
 import { safeRelativeTarget } from '#lib/server/http/redirects.ts';
 import { isActiveAdmin } from '#lib/server/modules/auth/index.ts';
 import { fieldErrors, signInSchema } from '#lib/shared/schemas/auth.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const DEFAULT_TARGET = '/library';
+
+// `auth.api.signInEmail` bypasses Better Auth's HTTP rate limiter (security
+// audit H5), so the action counts attempts itself: per address and, so one
+// account cannot be hammered from many addresses, per email.
+const IP_LIMIT = { max: 10, windowSeconds: 60 };
+const EMAIL_LIMIT = { max: 20, windowSeconds: 15 * 60 };
+const TOO_MANY_ATTEMPTS = 'Too many sign-in attempts. Please wait a few minutes and try again.';
 
 function isTwoFactorRedirect(result: unknown): boolean {
 	return (
@@ -48,13 +56,21 @@ export const load: PageServerLoad = async ({ locals, url, request }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, locals }) => {
+	default: async (event) => {
+		const { request, locals } = event;
 		const form = await readForm(request);
 		const parsed = v.safeParse(signInSchema, form);
 		if (!parsed.success) {
 			return fail(400, { email: form.email ?? '', errors: fieldErrors(parsed.issues) });
 		}
 		const { email, password, redirectTo } = parsed.output;
+
+		const { limiter } = locals.services;
+		const byAddress = await limiter.consume(keyFor('signin', event), IP_LIMIT);
+		const byEmail = await limiter.consume(hashedKey('signin', email.toLowerCase()), EMAIL_LIMIT);
+		if (!byAddress.allowed || !byEmail.allowed) {
+			return fail(429, { email, error: TOO_MANY_ATTEMPTS });
+		}
 
 		// The session cookie is set through the sveltekitCookies plugin.
 		let userId: string;

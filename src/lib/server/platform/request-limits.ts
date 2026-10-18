@@ -79,6 +79,10 @@ export function keyFor(prefix: string, event: { getClientAddress(): string }): s
 	} catch {
 		address = 'unknown';
 	}
-	const hash = createHash('sha256').update(address).digest('hex');
-	return `${prefix}:${hash}`;
+	return hashedKey(prefix, address);
+}
+
+/** A limiter key for `prefix` and a hashed `value` (an email, an address): the table never sees the value. */
+export function hashedKey(prefix: string, value: string): string {
+	return `${prefix}:${createHash('sha256').update(value).digest('hex')}`;
 }
