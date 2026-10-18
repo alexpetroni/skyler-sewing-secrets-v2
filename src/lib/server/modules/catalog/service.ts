@@ -1,7 +1,14 @@
-import { and, asc, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql, type SQL } from 'drizzle-orm';
 import { schema, withTx, type Db, type Tx } from '#lib/server/db/index.ts';
-import type { Logger } from '#lib/server/platform/index.ts';
-import { PRICE_MIN, type ProductInput, type ProductKind } from '#lib/shared/schemas/catalog.ts';
+import type { Logger, Revalidator } from '#lib/server/platform/index.ts';
+import {
+	LESSON_SEARCH_LIMIT,
+	PRICE_MIN,
+	type ProductFields,
+	type ProductInput,
+	type ProductKind,
+	type ProductVisibilityInput
+} from '#lib/shared/schemas/catalog.ts';
 import { renderMarkdown, type ContentService } from '../content/index.ts';
 import { DomainError } from '../errors.ts';
 import { effectivePrice, type EffectivePrice } from './pricing.ts';
@@ -33,11 +40,26 @@ export const PUBLISH_CONDITIONS: readonly PublishCondition[] = [
 	'media_ready'
 ];
 
+/** What the admin must do for each unmet condition. */
+export const PUBLISH_CONDITION_LABELS: Record<PublishCondition, string> = {
+	cover: 'Add a cover image',
+	description: 'Write a description',
+	price: 'Set a price of at least £0.30',
+	items: 'Add the videos it sells (a bundle needs two or more, a single exactly one)',
+	lessons_published: 'Publish every included lesson',
+	media_ready: 'Wait until every included video has finished processing'
+};
+
+/** The form error a refused publish shows. */
+export function publishBlockedMessage(unmet: readonly PublishCondition[]): string {
+	return `Not published yet: ${unmet.map((condition) => PUBLISH_CONDITION_LABELS[condition]).join('; ')}.`;
+}
+
 /** Thrown by `publish` while the checklist has unmet conditions. */
 export class PublishBlockedError extends DomainError {
 	readonly unmet: PublishCondition[];
 	constructor(unmet: PublishCondition[]) {
-		super('PUBLISH_BLOCKED', `Cannot publish: ${unmet.join(', ')}`);
+		super('PUBLISH_BLOCKED', publishBlockedMessage(unmet));
 		this.name = 'PublishBlockedError';
 		this.unmet = unmet;
 	}
@@ -74,6 +96,16 @@ export interface LessonOffer {
 	pricing: EffectivePrice;
 }
 
+/** A lesson as the admin item picker shows it, with the products that already list it. */
+export interface PickerLesson {
+	id: string;
+	title: string;
+	moduleTitle: string | null;
+	durationSeconds: number | null;
+	isPublished: boolean;
+	products: Array<{ id: string; title: string }>;
+}
+
 export interface ListPublishedParams {
 	kind?: ProductKind;
 	now?: Date;
@@ -87,10 +119,20 @@ export interface CatalogService {
 	getPublishedBySlug(slug: string, now?: Date): Promise<ProductDetail | null>;
 	listAll(): Promise<Product[]>;
 	getById(id: string): Promise<(Product & { items: ProductItem[] }) | null>;
-	/** A `course` becomes the flagship (`access_scope = 'all'`); refused while one exists. */
-	create(input: ProductInput, actorId?: string): Promise<Product>;
+	/**
+	 * A `course` becomes the flagship (`access_scope = 'all'`); refused while one exists.
+	 * `lessonIds` become the items in the same transaction, under the `setItems` rules.
+	 */
+	create(input: ProductInput, actorId?: string, lessonIds?: string[]): Promise<Product>;
 	/** `input.kind` is ignored: the kind is fixed at creation. */
 	update(id: string, input: ProductInput, actorId?: string): Promise<Product>;
+	/** `update` with only the given fields changed; the rest keep their saved values. */
+	updateFields(id: string, fields: ProductFields, actorId?: string): Promise<Product>;
+	/**
+	 * Featured flag, sort order and published state in one write; publishing
+	 * refuses with `PublishBlockedError` (nothing saved) while the checklist is not empty.
+	 */
+	setVisibility(id: string, input: ProductVisibilityInput, actorId?: string): Promise<Product>;
 	/** Replaces the items, deduped, in the given order. `single` → exactly one; `course` → none. */
 	setItems(id: string, lessonIds: string[], actorId?: string): Promise<ProductItem[]>;
 	publishChecklist(id: string): Promise<PublishCondition[]>;
@@ -107,15 +149,46 @@ export interface CatalogService {
 	): Promise<Product[]>;
 	/** The cheapest published product listing the lesson, else the published flagship, else null. */
 	cheapestProductForLesson(lessonId: string, now?: Date): Promise<LessonOffer | null>;
+	/** Every product with its price now and item totals, in catalogue order. */
+	listAllWithTotals(now?: Date): Promise<CatalogProduct[]>;
+	/** Lessons whose title or module title contains `q`, at most `LESSON_SEARCH_LIMIT`. */
+	searchLessons(q: string): Promise<PickerLesson[]>;
+	/** The given lessons in the given order; unknown ids are left out. */
+	pickerLessons(ids: readonly string[]): Promise<PickerLesson[]>;
 }
 
 export interface CreateCatalogServiceDeps {
 	db: Db;
 	content: ContentService;
 	log: Logger;
+	/** Refreshes `/catalogue` and the product page after a visibility change. */
+	revalidator?: Revalidator;
 }
 
 const CATALOGUE_ORDER = [desc(products.is_featured), asc(products.sort_order), asc(products.title)];
+
+/** A saved product as the input `update` takes. */
+function inputOf(product: Product): ProductInput {
+	return {
+		kind: product.kind,
+		slug: product.slug,
+		title: product.title,
+		tagline: product.tagline ?? '',
+		descriptionMd: product.description_md ?? '',
+		coverImageUrl: product.cover_image_url ?? '',
+		price: product.price,
+		salePrice: product.sale_price,
+		saleStartsAt: product.sale_starts_at,
+		saleEndsAt: product.sale_ends_at,
+		isFeatured: product.is_featured,
+		sortOrder: product.sort_order
+	};
+}
+
+/** Escapes `%`, `_` and `\` so a search term matches literally inside `ilike`. */
+function likePattern(q: string): string {
+	return `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}
 
 function productValues(input: ProductInput) {
 	return {
@@ -145,7 +218,8 @@ interface ItemRow {
 export function createCatalogService({
 	db,
 	content,
-	log
+	log,
+	revalidator
 }: CreateCatalogServiceDeps): CatalogService {
 	async function writeAudit(
 		tx: Tx,
@@ -317,29 +391,162 @@ export function createCatalogService({
 			.orderBy(asc(product_items.sort_order), asc(lessons.title));
 	}
 
+	/** Sets `is_published` inside `tx`, checking the list first when publishing. */
+	async function applyPublished(
+		tx: Tx,
+		product: Product,
+		published: boolean,
+		actorId?: string
+	): Promise<Product> {
+		if (published) {
+			const unmet = checklistFor(product, await itemRows(tx, product.id));
+			if (unmet.length > 0) throw new PublishBlockedError(unmet);
+		}
+		const [after] = await tx
+			.update(products)
+			.set({ is_published: published, updated_at: sql`now()` })
+			.where(eq(products.id, product.id))
+			.returning();
+		await writeAudit(
+			tx,
+			actorId,
+			published ? 'product.publish' : 'product.unpublish',
+			product.id,
+			{ is_published: product.is_published },
+			{ is_published: after.is_published }
+		);
+		log.info(published ? 'product published' : 'product unpublished', { productId: product.id });
+		return after;
+	}
+
+	/** After commit: the catalogue and the product page, under the old and the new slug. */
+	async function refreshPages(before: Product, after: Product): Promise<void> {
+		if (!revalidator || (!before.is_published && !after.is_published)) return;
+		const paths = new Set(['/catalogue', `/products/${before.slug}`, `/products/${after.slug}`]);
+		await revalidator.revalidate([...paths]);
+	}
+
 	async function setPublished(id: string, published: boolean, actorId?: string): Promise<Product> {
-		return withTx(db, async (tx) => {
-			const before = await requireProduct(tx, id);
-			if (published) {
-				const unmet = checklistFor(before, await itemRows(tx, id));
-				if (unmet.length > 0) throw new PublishBlockedError(unmet);
-			}
-			const [after] = await tx
-				.update(products)
-				.set({ is_published: published, updated_at: sql`now()` })
-				.where(eq(products.id, id))
-				.returning();
-			await writeAudit(
-				tx,
-				actorId,
-				published ? 'product.publish' : 'product.unpublish',
-				id,
-				{ is_published: before.is_published },
-				{ is_published: after.is_published }
-			);
-			log.info(published ? 'product published' : 'product unpublished', { productId: id });
-			return after;
+		const [before, after] = await withTx(db, async (tx) => {
+			const product = await requireProduct(tx, id);
+			return [product, await applyPublished(tx, product, published, actorId)] as const;
 		});
+		await refreshPages(before, after);
+		return after;
+	}
+
+	/** Replaces the items inside `tx` under the kind rules; audited as `product.set_items`. */
+	async function replaceItems(
+		tx: Tx,
+		product: Product,
+		lessonIds: string[],
+		actorId?: string
+	): Promise<ProductItem[]> {
+		const id = product.id;
+		const ids = [...new Set(lessonIds)];
+		if (product.kind === 'course' && ids.length > 0) {
+			throw new DomainError('INVALID_ITEMS', 'The course has no item list');
+		}
+		if (product.kind === 'single' && ids.length !== 1) {
+			throw new DomainError('INVALID_ITEMS', 'A single sells exactly one video');
+		}
+		if (ids.length > 0) {
+			const found = await tx
+				.select({ id: lessons.id })
+				.from(lessons)
+				.where(inArray(lessons.id, ids));
+			if (found.length !== ids.length) {
+				throw new DomainError('LESSON_NOT_FOUND', 'Lesson not found');
+			}
+		}
+		const before = await tx
+			.select()
+			.from(product_items)
+			.where(eq(product_items.product_id, id))
+			.orderBy(asc(product_items.sort_order));
+		await tx.delete(product_items).where(eq(product_items.product_id, id));
+		const after =
+			ids.length === 0
+				? []
+				: await tx
+						.insert(product_items)
+						.values(
+							ids.map((lessonId, index) => ({
+								product_id: id,
+								lesson_id: lessonId,
+								sort_order: index
+							}))
+						)
+						.returning();
+		await tx
+			.update(products)
+			.set({ updated_at: sql`now()` })
+			.where(eq(products.id, id));
+		await writeAudit(
+			tx,
+			actorId,
+			'product.set_items',
+			id,
+			{ lessonIds: before.map((item) => item.lesson_id) },
+			{ lessonIds: ids }
+		);
+		return after;
+	}
+
+	async function updateProduct(
+		tx: Tx,
+		before: Product,
+		input: ProductInput,
+		actorId?: string
+	): Promise<Product> {
+		await assertSlugFree(tx, input.slug, before.id);
+		const [after] = await tx
+			.update(products)
+			.set({ ...productValues(input), updated_at: sql`now()` })
+			.where(eq(products.id, before.id))
+			.returning();
+		await writeAudit(tx, actorId, 'product.update', before.id, before, after);
+		return after;
+	}
+
+	/** Picker rows for the given lesson filter, with the products listing each lesson. */
+	async function pickerRows(where: SQL, limit?: number): Promise<PickerLesson[]> {
+		const query = db
+			.select({
+				id: lessons.id,
+				title: lessons.title,
+				moduleTitle: modules.title,
+				durationSeconds: media_assets.duration_seconds,
+				isPublished: lessons.is_published
+			})
+			.from(lessons)
+			.leftJoin(modules, eq(modules.id, lessons.module_id))
+			.leftJoin(media_assets, eq(media_assets.id, lessons.media_asset_id))
+			.where(where)
+			.orderBy(asc(lessons.title), asc(lessons.id));
+		const rows = limit === undefined ? await query : await query.limit(limit);
+		if (rows.length === 0) return [];
+		const listed = await db
+			.select({
+				lessonId: product_items.lesson_id,
+				id: products.id,
+				title: products.title
+			})
+			.from(product_items)
+			.innerJoin(products, eq(products.id, product_items.product_id))
+			.where(
+				inArray(
+					product_items.lesson_id,
+					rows.map((row) => row.id)
+				)
+			)
+			.orderBy(asc(products.title));
+		return rows.map((row) => ({
+			...row,
+			products: listed
+				.filter((item) => item.lessonId === row.id)
+				.map((item) => ({ id: item.id, title: item.title }))
+		}));
 	}
 
 	return {
@@ -389,7 +596,7 @@ export function createCatalogService({
 			return { ...product, items };
 		},
 
-		create: (input, actorId) =>
+		create: (input, actorId, lessonIds) =>
 			withTx(db, async (tx) => {
 				await assertSlugFree(tx, input.slug);
 				if (input.kind === 'course' && (await findFlagship(tx))) {
@@ -404,75 +611,43 @@ export function createCatalogService({
 					})
 					.returning();
 				await writeAudit(tx, actorId, 'product.create', product.id, null, product);
+				if (lessonIds) await replaceItems(tx, product, lessonIds, actorId);
 				log.info('product created', { productId: product.id, kind: product.kind });
 				return product;
 			}),
 
 		update: (id, input, actorId) =>
+			withTx(db, async (tx) => updateProduct(tx, await requireProduct(tx, id), input, actorId)),
+
+		updateFields: (id, fields, actorId) =>
 			withTx(db, async (tx) => {
 				const before = await requireProduct(tx, id);
-				await assertSlugFree(tx, input.slug, id);
-				const [after] = await tx
-					.update(products)
-					.set({ ...productValues(input), updated_at: sql`now()` })
-					.where(eq(products.id, id))
-					.returning();
-				await writeAudit(tx, actorId, 'product.update', id, before, after);
-				return after;
+				return updateProduct(tx, before, { ...inputOf(before), ...fields }, actorId);
 			}),
 
-		setItems: (id, lessonIds, actorId) =>
-			withTx(db, async (tx) => {
+		async setVisibility(id, { isPublished, isFeatured, sortOrder }, actorId) {
+			const [before, after] = await withTx(db, async (tx) => {
 				const product = await requireProduct(tx, id);
-				const ids = [...new Set(lessonIds)];
-				if (product.kind === 'course' && ids.length > 0) {
-					throw new DomainError('INVALID_ITEMS', 'The course has no item list');
+				let current = product;
+				if (isFeatured !== product.is_featured || sortOrder !== product.sort_order) {
+					current = await updateProduct(
+						tx,
+						product,
+						{ ...inputOf(product), isFeatured, sortOrder },
+						actorId
+					);
 				}
-				if (product.kind === 'single' && ids.length !== 1) {
-					throw new DomainError('INVALID_ITEMS', 'A single sells exactly one video');
+				if (isPublished !== product.is_published) {
+					current = await applyPublished(tx, current, isPublished, actorId);
 				}
-				if (ids.length > 0) {
-					const found = await tx
-						.select({ id: lessons.id })
-						.from(lessons)
-						.where(inArray(lessons.id, ids));
-					if (found.length !== ids.length) {
-						throw new DomainError('LESSON_NOT_FOUND', 'Lesson not found');
-					}
-				}
-				const before = await tx
-					.select()
-					.from(product_items)
-					.where(eq(product_items.product_id, id))
-					.orderBy(asc(product_items.sort_order));
-				await tx.delete(product_items).where(eq(product_items.product_id, id));
-				const after =
-					ids.length === 0
-						? []
-						: await tx
-								.insert(product_items)
-								.values(
-									ids.map((lessonId, index) => ({
-										product_id: id,
-										lesson_id: lessonId,
-										sort_order: index
-									}))
-								)
-								.returning();
-				await tx
-					.update(products)
-					.set({ updated_at: sql`now()` })
-					.where(eq(products.id, id));
-				await writeAudit(
-					tx,
-					actorId,
-					'product.set_items',
-					id,
-					{ lessonIds: before.map((item) => item.lesson_id) },
-					{ lessonIds: ids }
-				);
-				return after;
-			}),
+				return [product, current] as const;
+			});
+			await refreshPages(before, after);
+			return after;
+		},
+
+		setItems: (id, lessonIds, actorId) =>
+			withTx(db, async (tx) => replaceItems(tx, await requireProduct(tx, id), lessonIds, actorId)),
 
 		async publishChecklist(id) {
 			const product = await requireProduct(db, id);
@@ -543,6 +718,32 @@ export function createCatalogService({
 				.where(and(eq(products.access_scope, 'all'), eq(products.is_published, true)))
 				.limit(1);
 			return flagship ? { product: flagship, pricing: effectivePrice(flagship, now) } : null;
+		},
+
+		async listAllWithTotals(now = new Date()) {
+			const rows = await db
+				.select()
+				.from(products)
+				.orderBy(...CATALOGUE_ORDER);
+			return toCatalogProducts(rows, now);
+		},
+
+		searchLessons(q) {
+			const term = q.trim();
+			const where = term
+				? (or(
+						ilike(lessons.title, likePattern(term)),
+						ilike(modules.title, likePattern(term))
+					) as SQL)
+				: sql`true`;
+			return pickerRows(where, LESSON_SEARCH_LIMIT);
+		},
+
+		async pickerLessons(ids) {
+			if (ids.length === 0) return [];
+			const rows = await pickerRows(inArray(lessons.id, [...ids]));
+			const byId = new Map(rows.map((row) => [row.id, row]));
+			return ids.flatMap((id) => byId.get(id) ?? []);
 		}
 	};
 }

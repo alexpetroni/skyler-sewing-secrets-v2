@@ -32,6 +32,7 @@ import {
 	createLogger,
 	createRequestLimiter,
 	createResendMailer,
+	createRevalidator,
 	createStripeGateway,
 	createTurnstileVerifier,
 	type Logger,
@@ -100,7 +101,14 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		webhookSecret: config.stripe.webhookSecret
 	});
 	const content = createContentService({ db, log: logger });
-	const catalog = createCatalogService({ db, content, log: logger });
+	// A no-op unless REVALIDATE_BYPASS_TOKEN is set.
+	const revalidator = createRevalidator({
+		bypassToken: config.revalidateBypassToken,
+		siteUrl: config.siteUrl,
+		fetch,
+		log: logger
+	});
+	const catalog = createCatalogService({ db, content, log: logger, revalidator });
 	const entitlements = createEntitlementService({ db, log: logger });
 	const promo = createPromoService({ db, log: logger });
 	const cart = createCartService({ catalog, entitlements, promo, log: logger });

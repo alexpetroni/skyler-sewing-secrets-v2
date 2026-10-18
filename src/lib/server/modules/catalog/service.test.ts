@@ -4,8 +4,15 @@ import { useTestDb } from '../../../../../tests/helpers/db.ts';
 import { createTestServices } from '../../../../../tests/helpers/services.ts';
 import { schema } from '#lib/server/db/index.ts';
 import type { ProductInput } from '#lib/shared/schemas/catalog.ts';
+import { createFakeLogger } from '#lib/server/platform/fakes/logger.ts';
+import { createContentService } from '../content/index.ts';
 import { DomainError } from '../errors.ts';
-import { PUBLISH_CONDITIONS, PublishBlockedError } from './service.ts';
+import {
+	createCatalogService,
+	PUBLISH_CONDITIONS,
+	PublishBlockedError,
+	publishBlockedMessage
+} from './service.ts';
 
 vi.mock('$app/server', () => ({ getRequestEvent: () => null }));
 
@@ -549,6 +556,151 @@ describe('createCatalogService', () => {
 			expect((await db().select().from(audit_log)).map((entry) => entry.action)).toEqual([
 				'product.create'
 			]);
+		});
+	});
+
+	describe('admin editor helpers', () => {
+		it('create with lessonIds stores the items in the same write, under the kind rules', async () => {
+			const { catalog } = setup();
+			const lesson = await createLesson();
+			const single = await catalog.create(productInput({ kind: 'single' }), undefined, [lesson]);
+			expect((await catalog.getById(single.id))?.items.map((item) => item.lesson_id)).toEqual([
+				lesson
+			]);
+
+			const before = await db().select().from(products);
+			await expectDomainError(
+				catalog.create(productInput({ kind: 'single' }), undefined, [lesson, await createLesson()]),
+				'INVALID_ITEMS'
+			);
+			expect(await db().select().from(products)).toHaveLength(before.length);
+		});
+
+		it('updateFields changes only the given fields and audits the update', async () => {
+			const { catalog } = setup();
+			const adminId = await createUser('admin@example.com');
+			const bundle = await catalog.create(
+				productInput({ price: 4900, salePrice: 3900, tagline: 'Kept' })
+			);
+
+			const after = await catalog.updateFields(
+				bundle.id,
+				{ title: 'Renamed', descriptionMd: 'New **copy**' },
+				adminId
+			);
+			expect(after).toMatchObject({
+				title: 'Renamed',
+				tagline: 'Kept',
+				price: 4900,
+				sale_price: 3900,
+				slug: bundle.slug,
+				description_md: 'New **copy**'
+			});
+			expect(after.description_html).toContain('<strong>copy</strong>');
+			const entries = await db().select().from(audit_log).where(eq(audit_log.entity_id, bundle.id));
+			expect(entries.map((entry) => entry.action)).toEqual(['product.update']);
+		});
+
+		it('setVisibility refuses to publish an incomplete product and saves nothing', async () => {
+			const { catalog } = setup();
+			const bundle = await catalog.create(productInput({ coverImageUrl: '' }));
+			const err = await catalog
+				.setVisibility(bundle.id, { isPublished: true, isFeatured: true, sortOrder: 4 })
+				.catch((error: unknown) => error);
+			expect(err).toBeInstanceOf(PublishBlockedError);
+			expect((err as PublishBlockedError).unmet).toEqual(['cover', 'items']);
+			expect(publishBlockedMessage((err as PublishBlockedError).unmet)).toBe(
+				'Not published yet: Add a cover image; Add the videos it sells (a bundle needs two or more, a single exactly one).'
+			);
+			expect(await catalog.getById(bundle.id)).toMatchObject({
+				is_published: false,
+				is_featured: false,
+				sort_order: 0
+			});
+		});
+
+		it('setVisibility saves featured, order and publication together and revalidates', async () => {
+			const revalidated: string[][] = [];
+			const catalog = createCatalogService({
+				db: db(),
+				content: createContentService({ db: db(), log: createFakeLogger() }),
+				log: createFakeLogger(),
+				revalidator: {
+					async revalidate(paths) {
+						revalidated.push([...paths]);
+					}
+				}
+			});
+			const adminId = await createUser('admin@example.com');
+			const bundle = await catalog.create(productInput({ slug: 'zips' }));
+			await catalog.setItems(bundle.id, [await createLesson(), await createLesson()]);
+
+			// A draft's featured flag changes nothing public.
+			await catalog.setVisibility(bundle.id, {
+				isPublished: false,
+				isFeatured: true,
+				sortOrder: 2
+			});
+			expect(revalidated).toEqual([]);
+
+			const published = await catalog.setVisibility(
+				bundle.id,
+				{ isPublished: true, isFeatured: true, sortOrder: 3 },
+				adminId
+			);
+			expect(published).toMatchObject({ is_published: true, is_featured: true, sort_order: 3 });
+			expect(revalidated).toEqual([['/catalogue', '/products/zips']]);
+			const entries = await db().select().from(audit_log).where(eq(audit_log.entity_id, bundle.id));
+			// One transaction, one `now()`: compare as a set.
+			expect(entries.map((entry) => entry.action).sort()).toEqual([
+				'product.publish',
+				'product.update'
+			]);
+
+			await catalog.unpublish(bundle.id);
+			expect(revalidated).toHaveLength(2);
+		});
+
+		it('searchLessons matches title or module, caps at 20 and lists the products of each', async () => {
+			const { catalog, content } = setup();
+			const module = await content.modules.create({
+				title: 'Zip Basics',
+				slug: 'zip-basics',
+				description: '',
+				thumbnailUrl: '',
+				orderIndex: 0,
+				isPublished: true,
+				isBonus: false,
+				isCourseContent: true
+			});
+			const inModule = await createLesson({ moduleId: module.id, durationSeconds: 125 });
+			const others = [];
+			for (let i = 0; i < 21; i += 1) others.push(await createLesson());
+			const bundle = await catalog.create(productInput({ title: 'Zippers Pack' }));
+			await catalog.setItems(bundle.id, [inModule, others[0]]);
+
+			const byModule = await catalog.searchLessons('zip');
+			expect(byModule).toEqual([
+				{
+					id: inModule,
+					title: expect.stringMatching(/^Lesson \d+$/),
+					moduleTitle: 'Zip Basics',
+					durationSeconds: 125,
+					isPublished: true,
+					products: [{ id: bundle.id, title: 'Zippers Pack' }]
+				}
+			]);
+			expect(await catalog.searchLessons('Lesson')).toHaveLength(20);
+			// `%` and `_` are literal characters, not wildcards.
+			expect(await catalog.searchLessons('%')).toEqual([]);
+		});
+
+		it('pickerLessons keeps the given order and drops unknown ids', async () => {
+			const { catalog } = setup();
+			const [a, b] = [await createLesson(), await createLesson()];
+			const rows = await catalog.pickerLessons([b, crypto.randomUUID(), a]);
+			expect(rows.map((row) => row.id)).toEqual([b, a]);
+			expect(await catalog.pickerLessons([])).toEqual([]);
 		});
 	});
 });

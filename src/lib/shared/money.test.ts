@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPence, parsePounds } from '#lib/shared/money.ts';
+import { formatPence, parsePounds, penceToPounds } from '#lib/shared/money.ts';
 
 describe('formatPence', () => {
 	it('formats whole pounds with two decimals', () => {
@@ -35,5 +35,14 @@ describe('parsePounds', () => {
 	it('rejects amounts whose pence would not be a safe integer', () => {
 		expect(parsePounds('99999999999999999999')).toBeNull();
 		expect(parsePounds('9999999999.99')).toBe(999_999_999_999);
+	});
+});
+
+describe('penceToPounds', () => {
+	it('shows pence as a pounds amount parsePounds reads back', () => {
+		expect(penceToPounds(14950)).toBe('149.50');
+		expect(penceToPounds(5)).toBe('0.05');
+		expect(penceToPounds(null)).toBe('');
+		expect(parsePounds(penceToPounds(999_999_999_999))).toBe(999_999_999_999);
 	});
 });

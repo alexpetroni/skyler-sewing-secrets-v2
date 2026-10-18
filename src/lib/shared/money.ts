@@ -40,3 +40,9 @@ export function parsePounds(input: string): number | null {
 	const pence = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
 	return Number.isSafeInteger(pence) ? pence : null;
 }
+
+/** Integer pence as the plain pounds a form input shows, e.g. `14950` → `'149.50'`; null → `''`. */
+export function penceToPounds(pence: number | null): string {
+	if (pence === null) return '';
+	return `${Math.floor(pence / 100)}.${String(pence % 100).padStart(2, '0')}`;
+}
