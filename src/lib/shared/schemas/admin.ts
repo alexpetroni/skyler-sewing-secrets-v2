@@ -88,6 +88,18 @@ const isUuid = (value: string) => (v.is(idSchema, value) ? value : undefined);
 
 export const userSearchQuerySchema = v.object({ q: searchParam, page: pageParam });
 
+/** `/admin/catalogue/new?kind=&lesson=`: a bundle unless `single`; the video a new single sells. */
+export const productNewQuerySchema = v.object({
+	kind: v.pipe(
+		v.optional(v.string(), ''),
+		v.transform((value): 'bundle' | 'single' => (value === 'single' ? 'single' : 'bundle'))
+	),
+	lesson: optionalParam(isUuid)
+});
+
+/** `GET /admin/api/lessons?q=`. */
+export const lessonSearchQuerySchema = v.object({ q: searchParam });
+
 export const orderListQuerySchema = v.object({
 	status: optionalParam((value) =>
 		(orderStatuses as readonly string[]).includes(value) ? (value as AdminOrderStatus) : undefined
