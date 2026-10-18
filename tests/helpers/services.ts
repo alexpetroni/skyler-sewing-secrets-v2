@@ -15,6 +15,10 @@ import {
 	createFakeVideoHost,
 	type FakeVideoHost
 } from '../../src/lib/server/platform/fakes/video-host.ts';
+import {
+	createFakeStorage,
+	type FakeStorage
+} from '../../src/lib/server/platform/fakes/storage.ts';
 import { createCatalogService } from '../../src/lib/server/modules/catalog/index.ts';
 import {
 	createCartCookie,
@@ -42,6 +46,7 @@ export type { LogEntry };
 export interface TestServices extends Services {
 	payments: FakePaymentGateway;
 	videoHost: FakeVideoHost;
+	storage: FakeStorage;
 	mailer: FakeMailer;
 	/** Reset emails the fake mailer "sent". */
 	resetEmails: Array<{ to: string; url: string }>;
@@ -88,6 +93,9 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 	const promo = createPromoService({ db, log: logger });
 	const cart = createCartService({ catalog, entitlements, promo, log: logger });
 	const payments = createFakePaymentGateway();
+	const storage = createFakeStorage({
+		now: overrides.now ? () => overrides.now!().getTime() : undefined
+	});
 	const mailer = createFakeMailer();
 	const limiter = createRequestLimiter({ db, now: overrides.now });
 	const turnstile = overrides.turnstile;
@@ -122,6 +130,7 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		logger,
 		payments,
 		videoHost,
+		storage,
 		mailer,
 		limiter,
 		media: createMediaService({ db, videoHost, log: logger }),
@@ -156,6 +165,7 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 			fulfilment,
 			catalog,
 			gateway: payments,
+			storage,
 			log: logger,
 			now: overrides.now
 		}),

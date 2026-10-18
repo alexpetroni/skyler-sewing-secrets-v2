@@ -2,15 +2,20 @@
 	/* eslint-disable svelte/no-navigation-without-resolve -- links are root-relative with no base path */
 	import AdminPage from '#lib/components/admin/AdminPage.svelte';
 	import ConfirmForm from '#lib/components/admin/ConfirmForm.svelte';
+	import UploadButton from '#lib/components/admin/UploadButton.svelte';
 	import Form from '#lib/components/admin/Form.svelte';
 	import LessonFields from '#lib/components/admin/LessonFields.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Card from '#lib/components/ui/Card.svelte';
 	import Input from '#lib/components/ui/Input.svelte';
 	import { DELETE_PHRASE } from '#lib/shared/schemas/admin.ts';
+	import { ACCEPT_RESOURCES } from '#lib/shared/uploads.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	/** The new resource's URL: typed, or written by the upload button. */
+	let fileUrl = $state('');
 
 	const standalone = $derived(data.lesson.module_id === null);
 </script>
@@ -78,13 +83,19 @@
 			{#snippet children({ errors, submitting })}
 				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<Input label="Title" name="title" error={errors.title?.[0]} />
-					<Input
-						label="File URL"
-						name="fileUrl"
-						type="url"
-						placeholder="https://"
-						error={errors.fileUrl?.[0]}
-					/>
+					<div>
+						<Input
+							label="File URL"
+							name="fileUrl"
+							type="url"
+							placeholder="https://"
+							bind:value={fileUrl}
+							error={errors.fileUrl?.[0]}
+						/>
+						<div class="mt-2">
+							<UploadButton accept={ACCEPT_RESOURCES} onUploaded={(url) => (fileUrl = url)} />
+						</div>
+					</div>
 				</div>
 				<Button type="submit" size="sm" variant="secondary" loading={submitting}>
 					Add resource

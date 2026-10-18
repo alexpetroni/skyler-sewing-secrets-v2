@@ -30,6 +30,7 @@ import {
 } from '#lib/server/modules/marketing/index.ts';
 import { createMediaService, type MediaService } from '#lib/server/modules/media/index.ts';
 import {
+	createBunnyStorage,
 	createBunnyVideoHost,
 	createLogger,
 	createRequestLimiter,
@@ -37,6 +38,7 @@ import {
 	createRevalidator,
 	createStripeGateway,
 	createTurnstileVerifier,
+	type BunnyStorage,
 	type Logger,
 	type Mailer,
 	type PaymentGateway,
@@ -58,6 +60,8 @@ export interface Services {
 	logger: Logger;
 	payments: PaymentGateway;
 	videoHost: VideoHost;
+	/** Bunny Storage for admin uploads and signed download links. */
+	storage: BunnyStorage;
 	mailer: Mailer;
 	limiter: RequestLimiter;
 	media: MediaService;
@@ -98,6 +102,15 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		embedTokenKey: config.bunny.embedTokenKey,
 		cdnHost: config.bunny.streamCdnHost,
 		fetch
+	});
+
+	const storage = createBunnyStorage({
+		zone: config.bunny.storageZone,
+		apiKey: config.bunny.storageApiKey,
+		cdnUrl: config.bunny.publicCdnUrl,
+		tokenKey: config.bunny.cdnTokenKey,
+		fetch,
+		log: logger
 	});
 
 	const payments = createStripeGateway({
@@ -149,6 +162,7 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		logger,
 		payments,
 		videoHost,
+		storage,
 		mailer,
 		limiter,
 		media: createMediaService({ db, videoHost, log: logger }),
@@ -186,6 +200,7 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 			fulfilment,
 			catalog,
 			gateway: payments,
+			storage,
 			log: logger
 		}),
 		googleEnabled: config.google !== undefined,

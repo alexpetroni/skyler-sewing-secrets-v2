@@ -41,6 +41,15 @@ export {
 	type VideoHost
 } from './bunny.ts';
 export {
+	createBunnyStorage,
+	signedStorageUrl,
+	STORAGE_API_BASE,
+	storagePathOf,
+	StorageError,
+	type BunnyStorage,
+	type BunnyStorageOptions
+} from './bunny-storage.ts';
+export {
 	createResendMailer,
 	MailerError,
 	RESEND_ENDPOINT,

@@ -24,6 +24,8 @@ export interface RuntimeConfig {
 		publicCdnUrl: string;
 		storageZone: string;
 		storageApiKey: string;
+		/** Pull zone token key; download links are unsigned when absent. */
+		cdnTokenKey?: string;
 	};
 	contactEmail: string;
 	cronSecret: string;
@@ -79,7 +81,8 @@ export function getRuntimeConfig(): RuntimeConfig {
 			streamCdnHost: required('BUNNY_STREAM_CDN_HOST', privateEnv.BUNNY_STREAM_CDN_HOST),
 			publicCdnUrl: required('PUBLIC_BUNNY_CDN_URL', PUBLIC_BUNNY_CDN_URL),
 			storageZone: required('BUNNY_STORAGE_ZONE', privateEnv.BUNNY_STORAGE_ZONE),
-			storageApiKey: required('BUNNY_STORAGE_API_KEY', privateEnv.BUNNY_STORAGE_API_KEY)
+			storageApiKey: required('BUNNY_STORAGE_API_KEY', privateEnv.BUNNY_STORAGE_API_KEY),
+			cdnTokenKey: blankToUndefined(privateEnv.BUNNY_CDN_TOKEN_KEY)
 		},
 		contactEmail: required('CONTACT_EMAIL', privateEnv.CONTACT_EMAIL),
 		cronSecret: required('CRON_SECRET', privateEnv.CRON_SECRET),

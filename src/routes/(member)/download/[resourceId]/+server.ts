@@ -5,6 +5,9 @@ import { requireUser } from '#lib/server/modules/auth/index.ts';
 import { idSchema } from '#lib/shared/schemas/content.ts';
 import type { RequestHandler } from './$types';
 
+/** How long a signed download link stays valid. */
+const DOWNLOAD_TTL_SECONDS = 300;
+
 export const GET: RequestHandler = async (event) => {
 	// Sign-in redirect back here, 403 for suspended accounts.
 	requireUser(event);
@@ -18,6 +21,10 @@ export const GET: RequestHandler = async (event) => {
 	if (!ownsLesson(ctx, { id: found.lesson.id, isFreePreview: found.lesson.is_free_preview })) {
 		error(403, 'You do not have access to this resource');
 	}
-	// The stored URL is public; short-lived signed storage URLs come in PHASE-20.
-	redirect(302, found.resource.file_url, { external: true });
+	// Files on the storage pull zone get a short-lived token; other URLs pass through.
+	const url = await event.locals.services.storage.downloadUrl(
+		found.resource.file_url,
+		DOWNLOAD_TTL_SECONDS
+	);
+	redirect(302, url, { external: true });
 };

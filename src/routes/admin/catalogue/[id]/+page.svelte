@@ -6,6 +6,7 @@
 	import Form from '#lib/components/admin/Form.svelte';
 	import LessonPicker from '#lib/components/admin/LessonPicker.svelte';
 	import MarkdownEditor from '#lib/components/admin/MarkdownEditor.svelte';
+	import UploadButton from '#lib/components/admin/UploadButton.svelte';
 	import { promoStatusBadge } from '#lib/components/admin/promo-status.ts';
 	import PriceTag from '#lib/components/shop/PriceTag.svelte';
 	import Badge from '#lib/components/ui/Badge.svelte';
@@ -16,6 +17,7 @@
 	import { effectivePrice } from '#lib/shared/pricing.ts';
 	import { DELETE_PHRASE } from '#lib/shared/schemas/admin.ts';
 	import { toUtcDateTimeLocal } from '#lib/shared/schemas/catalog.ts';
+	import { ACCEPT_IMAGES } from '#lib/shared/uploads.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -28,6 +30,7 @@
 	let saleText = $state(untrack(() => penceToPounds(data.product.sale_price)));
 	let saleStarts = $state(untrack(() => toUtcDateTimeLocal(data.product.sale_starts_at)));
 	let saleEnds = $state(untrack(() => toUtcDateTimeLocal(data.product.sale_ends_at)));
+	let coverImageUrl = $state(untrack(() => data.product.cover_image_url ?? ''));
 
 	/** A `datetime-local` value as the UTC instant the server will store. */
 	const utc = (value: string) => (value ? `${value}Z` : null);
@@ -106,14 +109,19 @@
 							html={product.description_html ?? ''}
 							error={errors.descriptionMd?.[0]}
 						/>
-						<Input
-							label="Cover image URL"
-							name="coverImageUrl"
-							type="url"
-							placeholder="https://"
-							value={product.cover_image_url ?? ''}
-							error={errors.coverImageUrl?.[0]}
-						/>
+						<div>
+							<Input
+								label="Cover image URL"
+								name="coverImageUrl"
+								type="url"
+								placeholder="https://"
+								bind:value={coverImageUrl}
+								error={errors.coverImageUrl?.[0]}
+							/>
+							<div class="mt-2">
+								<UploadButton accept={ACCEPT_IMAGES} onUploaded={(url) => (coverImageUrl = url)} />
+							</div>
+						</div>
 						<div class="flex justify-end border-t border-gray-200 pt-4">
 							<Button type="submit" loading={submitting}>Save Basics</Button>
 						</div>

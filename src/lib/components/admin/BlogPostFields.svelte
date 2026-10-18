@@ -1,7 +1,10 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Input from '#lib/components/ui/Input.svelte';
 	import Textarea from '#lib/components/ui/Textarea.svelte';
+	import { ACCEPT_IMAGES } from '#lib/shared/uploads.ts';
 	import MarkdownEditor from './MarkdownEditor.svelte';
+	import UploadButton from './UploadButton.svelte';
 
 	interface PostValues {
 		title: string;
@@ -20,6 +23,9 @@
 	}
 
 	let { post, errors }: Props = $props();
+
+	/** Typed, or written by the upload button. */
+	let featuredImageUrl = $state(untrack(() => post?.featured_image_url ?? ''));
 
 	// Posts from the old site hold HTML and no Markdown; it is kept until Markdown replaces it.
 	const legacy = $derived(post !== undefined && post.content_md === null);
@@ -52,13 +58,18 @@
 		error={errors.excerpt?.[0]}
 	/>
 
-	<Input
-		label="Featured Image URL"
-		name="featuredImageUrl"
-		type="url"
-		value={post?.featured_image_url ?? ''}
-		error={errors.featuredImageUrl?.[0]}
-	/>
+	<div>
+		<Input
+			label="Featured Image URL"
+			name="featuredImageUrl"
+			type="url"
+			bind:value={featuredImageUrl}
+			error={errors.featuredImageUrl?.[0]}
+		/>
+		<div class="mt-2">
+			<UploadButton accept={ACCEPT_IMAGES} onUploaded={(url) => (featuredImageUrl = url)} />
+		</div>
+	</div>
 
 	{#if legacy && post}
 		<div class="space-y-3">

@@ -45,6 +45,40 @@ describe('/download/[resourceId]', () => {
 		);
 	});
 
+	it('signs files on the storage pull zone for five minutes, leaving other URLs alone', async () => {
+		const seeded = await seedCatalog(db());
+		const { storage } = seeded.services;
+		const stored = await storage.put(
+			'uploads/2026/10/pattern.pdf',
+			new Uint8Array(),
+			'application/pdf'
+		);
+		const resource = await seeded.services.content.resources.add({
+			lessonId: seeded.lessons.first,
+			title: 'Pattern',
+			fileUrl: stored
+		});
+		const before = Math.floor(Date.now() / 1000);
+
+		const result = await download(seeded, seeded.users.member.id, resource.id);
+		expect(result).toMatch(/^redirect 302 /);
+		const url = new URL(String(result).replace('redirect 302 ', ''));
+		expect(`${url.origin}${url.pathname}`).toBe(stored);
+		const expires = Number(url.searchParams.get('expires'));
+		expect(expires).toBeGreaterThanOrEqual(before + 300);
+		expect(expires).toBeLessThanOrEqual(before + 301);
+		expect(url.searchParams.get('token')).toBe(
+			new URL(
+				await storage.signedUrl(
+					'uploads/2026/10/pattern.pdf',
+					expires - Math.floor(Date.now() / 1000)
+				)
+			).searchParams.get('token')
+		);
+		// Not on the zone: redirected as stored (the first test above).
+		expect(storage.files.has('uploads/2026/10/pattern.pdf')).toBe(true);
+	});
+
 	it('refuses non-owners, also on a free preview, and suspended accounts', async () => {
 		const { seeded, resourceId } = await seedResource();
 		const { nobody, member } = seeded.users;

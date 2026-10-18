@@ -1,6 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { schema, withTx, type Db, type Tx } from '#lib/server/db/index.ts';
-import type { CheckoutSessionView, Logger, PaymentGateway } from '#lib/server/platform/index.ts';
+import type {
+	BunnyStorage,
+	CheckoutSessionView,
+	Logger,
+	PaymentGateway
+} from '#lib/server/platform/index.ts';
+import { UPLOAD_EXTENSIONS, UPLOAD_MAX_BYTES } from '#lib/shared/uploads.ts';
 import type { AuditListParams, OrderListParams } from './queries.ts';
 import * as queries from './queries.ts';
 import type { Auth, AuthService, Profile } from '../auth/index.ts';
@@ -26,8 +32,18 @@ export interface CreateAdminServiceDeps {
 	fulfilment: FulfilmentService;
 	catalog: CatalogService;
 	gateway: PaymentGateway;
+	/** Bunny Storage for the upload endpoint. */
+	storage: BunnyStorage;
 	log: Logger;
 	now?: () => Date;
+}
+
+export interface StoreUploadInput {
+	contentType: string;
+	size: number;
+	/** Reads the bytes; called only once the type and size pass. */
+	read: () => Promise<Uint8Array<ArrayBuffer>>;
+	actorId: string;
 }
 
 export interface GrantProductInput {
@@ -110,6 +126,14 @@ export interface AdminService {
 	audit: {
 		list(params: AuditListParams): Promise<queries.Paged<queries.AuditRow>>;
 	};
+	uploads: {
+		/**
+		 * Stores an admin upload under `uploads/<yyyy>/<mm>/<uuid>.<ext>` and
+		 * audits it. Refuses types outside the allow-list (`UPLOAD_TYPE_NOT_ALLOWED`)
+		 * and files over 25 MB (`UPLOAD_TOO_LARGE`).
+		 */
+		store(input: StoreUploadInput): Promise<{ url: string; path: string }>;
+	};
 }
 
 interface AuditEntry {
@@ -150,6 +174,7 @@ export function createAdminService({
 	fulfilment,
 	catalog,
 	gateway,
+	storage,
 	log,
 	now = () => new Date()
 }: CreateAdminServiceDeps): AdminService {
@@ -415,6 +440,37 @@ export function createAdminService({
 
 		audit: {
 			list: (params) => queries.listAudit(db, params)
+		},
+
+		uploads: {
+			async store({ contentType, size, read, actorId }) {
+				const ext = UPLOAD_EXTENSIONS[contentType];
+				if (!ext) {
+					throw new DomainError(
+						'UPLOAD_TYPE_NOT_ALLOWED',
+						'Only JPEG, PNG, WebP, AVIF images and PDF files can be uploaded'
+					);
+				}
+				if (size > UPLOAD_MAX_BYTES) {
+					throw new DomainError('UPLOAD_TOO_LARGE', 'Files must be 25 MB or smaller');
+				}
+				const bytes = await read();
+				if (bytes.byteLength > UPLOAD_MAX_BYTES) {
+					throw new DomainError('UPLOAD_TOO_LARGE', 'Files must be 25 MB or smaller');
+				}
+				const at = now();
+				const path = `uploads/${at.getUTCFullYear()}/${String(at.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.${ext}`;
+				const url = await storage.put(path, bytes, contentType);
+				await writeAudit(db, {
+					actorId,
+					action: 'upload.put',
+					entity: 'upload',
+					entityId: path,
+					after: { path, url, content_type: contentType, size: bytes.byteLength }
+				});
+				log.info('admin uploaded a file', { actorId, path, size: bytes.byteLength });
+				return { url, path };
+			}
 		}
 	};
 }

@@ -75,6 +75,11 @@ export const variables = defineEnvVars({
 		schema: required,
 		description: 'Bunny Storage zone password/API key for image uploads'
 	},
+	BUNNY_CDN_TOKEN_KEY: {
+		schema: optional,
+		description:
+			'Bunny pull zone token authentication key; download links are signed with it and unsigned when absent'
+	},
 	CONTACT_EMAIL: {
 		schema: required,
 		description: 'Inbox that receives contact form submissions'
