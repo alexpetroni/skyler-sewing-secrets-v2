@@ -5,6 +5,7 @@ import { schema } from '../../src/lib/server/db/index.ts';
 import { load as layoutLoad } from '../../src/routes/admin/+layout.server.ts';
 import { load as listLoad } from '../../src/routes/admin/users/+page.server.ts';
 import { actions, load } from '../../src/routes/admin/users/[id]/+page.server.ts';
+import { markTwoFactorEnabled } from '../helpers/admin.ts';
 import { useTestDb } from '../helpers/db.ts';
 import { FIXTURE_PASSWORD, seedCatalog, type SeededCatalog } from '../helpers/fixtures.ts';
 import { memberEvent, outcome } from '../helpers/member.ts';
@@ -44,6 +45,8 @@ describe('/admin/users', () => {
 			fullName: 'Owner'
 		});
 		await db().update(profiles).set({ is_admin: true }).where(eq(profiles.id, adminId));
+		// `setAdmin` requires the actor to have two-factor authentication on.
+		await markTwoFactorEnabled(seeded.services, adminId);
 	});
 
 	/** Calls the action directly, as SvelteKit does before any layout load runs. */
