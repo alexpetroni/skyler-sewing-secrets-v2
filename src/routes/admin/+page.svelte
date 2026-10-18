@@ -87,7 +87,7 @@
 		<Card>
 			<div class="mb-4 flex items-center justify-between">
 				<h2 class="text-lg font-semibold text-gray-900">Videos</h2>
-				<a href="/admin/videos" class="text-sm text-brand-600 hover:text-brand-500">View all</a>
+				<a href="/admin/media" class="text-sm text-brand-600 hover:text-brand-500">View all</a>
 			</div>
 			<ul class="divide-y divide-gray-100 text-sm">
 				<li class="flex justify-between py-3">

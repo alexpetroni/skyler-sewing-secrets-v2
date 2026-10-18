@@ -1,5 +1,5 @@
 import * as v from 'valibot';
-import { idSchema } from './content.ts';
+import { CONTENT_MD_MAX, idSchema, MAX_POSITION_SECONDS, TITLE_MAX } from './content.ts';
 
 /** One schema per admin form; the action decides with it, the page reuses it for errors. */
 
@@ -110,3 +110,103 @@ export function parseQuery<S extends v.GenericSchema>(
 ): v.InferOutput<S> {
 	return v.parse(schema, Object.fromEntries(params));
 }
+
+/** The phrase `ConfirmForm` asks for before a module, lesson or video is deleted. */
+export const DELETE_PHRASE = 'delete';
+
+export const confirmDeleteSchema = v.object({
+	confirm: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.check((value) => value.toLowerCase() === DELETE_PHRASE, 'Type the phrase exactly to confirm')
+	)
+});
+
+/** The up / down buttons of the module list; the action name carries the direction. */
+export const moveModuleSchema = v.object({ id: idSchema });
+
+export const lessonResourceSchema = v.object({
+	title: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.nonEmpty('Title is required'),
+		v.maxLength(TITLE_MAX, `Title must be at most ${TITLE_MAX} characters`)
+	),
+	fileUrl: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.regex(/^https:\/\/[^\s]+$/i, 'Must be an https:// URL')
+	)
+});
+
+export const removeResourceSchema = v.object({ resourceId: idSchema });
+
+export const thumbnailTimeSchema = v.object({
+	seconds: v.pipe(
+		v.number('Must be a whole number of seconds'),
+		v.integer('Must be a whole number of seconds'),
+		v.minValue(0, 'Must be a whole number of seconds'),
+		v.maxValue(MAX_POSITION_SECONDS, 'Must be within the video')
+	)
+});
+
+export const importVideoSchema = v.object({
+	videoId: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.nonEmpty('Choose a video'),
+		v.maxLength(100)
+	)
+});
+
+export const lessonListFilters = ['standalone', 'unpublished', 'media-not-ready'] as const;
+export type LessonListFilterParam = (typeof lessonListFilters)[number];
+
+export const lessonListQuerySchema = v.object({
+	module: optionalParam(isUuid),
+	filter: optionalParam((value) =>
+		(lessonListFilters as readonly string[]).includes(value)
+			? (value as LessonListFilterParam)
+			: undefined
+	)
+});
+
+export const mediaStatuses = ['uploading', 'processing', 'ready', 'failed'] as const;
+export type AdminMediaStatus = (typeof mediaStatuses)[number];
+
+export const mediaListQuerySchema = v.object({
+	q: searchParam,
+	status: optionalParam((value) =>
+		(mediaStatuses as readonly string[]).includes(value) ? (value as AdminMediaStatus) : undefined
+	)
+});
+
+/** Videos per page in the Bunny import browser. */
+export const LIBRARY_PAGE_SIZE = 25;
+
+export const libraryQuerySchema = v.object({ q: searchParam, page: pageParam });
+
+/** `POST /admin/api/upload-ticket`: the new video's title and the file's MIME type. */
+export const uploadTicketSchema = v.object({
+	title: v.pipe(
+		v.string(),
+		v.trim(),
+		v.nonEmpty('Title is required'),
+		v.maxLength(TITLE_MAX, `Title must be at most ${TITLE_MAX} characters`)
+	),
+	filetype: v.optional(
+		v.pipe(v.string(), v.regex(/^video\/[\w.+-]+$/, 'Choose a video file')),
+		'video/mp4'
+	)
+});
+
+/** `POST /admin/api/upload-ticket/reissue`: the asset whose upload is resumed. */
+export const reissueTicketSchema = v.object({ assetId: idSchema });
+
+/** `POST /admin/api/markdown-preview`. */
+export const markdownPreviewSchema = v.object({
+	markdown: v.pipe(
+		v.string(),
+		v.maxLength(CONTENT_MD_MAX, `Content must be at most ${CONTENT_MD_MAX} characters`)
+	)
+});

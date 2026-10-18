@@ -15,8 +15,13 @@
 	const navigation = [
 		{ name: 'Dashboard', href: '/admin', icon: 'home' },
 		{ name: 'Catalogue', href: '/admin/catalogue', icon: 'catalogue' },
-		{ name: 'Videos', href: '/admin/videos', icon: 'play' },
-		{ name: 'Course', href: '/admin/course', icon: 'folder' },
+		{ name: 'Videos', href: '/admin/media', icon: 'play' },
+		{
+			name: 'Course',
+			href: '/admin/content/modules',
+			icon: 'folder',
+			sections: ['/admin/content/modules', '/admin/content/lessons']
+		},
 		{ name: 'Promotions', href: '/admin/promotions', icon: 'tag' },
 		{ name: 'Orders', href: '/admin/orders', icon: 'currency' },
 		{ name: 'Users', href: '/admin/users', icon: 'users' },
@@ -26,12 +31,25 @@
 		{ name: 'Audit log', href: '/admin/audit', icon: 'clipboard' }
 	];
 
-	function isActive(href: string): boolean {
-		if (href === '/admin') {
-			return page.url.pathname === '/admin';
-		}
-		return page.url.pathname.startsWith(href);
+	function within(pathname: string, prefix: string): boolean {
+		return pathname === prefix || pathname.startsWith(`${prefix}/`);
 	}
+
+	// The most specific section wins, so course pages under /admin/content light up Course only.
+	const activeHref = $derived.by(() => {
+		const pathname = page.url.pathname;
+		if (pathname === '/admin') return '/admin';
+		let best: { href: string; length: number } | null = null;
+		for (const item of navigation) {
+			if (item.href === '/admin') continue;
+			for (const prefix of item.sections ?? [item.href]) {
+				if (within(pathname, prefix) && (!best || prefix.length > best.length)) {
+					best = { href: item.href, length: prefix.length };
+				}
+			}
+		}
+		return best?.href ?? null;
+	});
 
 	// Inline SVG constants (heroicons outline), rendered with {@html}.
 	const icons: Record<string, string> = {
@@ -69,7 +87,7 @@
 			<li>
 				<ul role="list" class="-mx-2 space-y-1">
 					{#each navigation as item (item.href)}
-						{@const active = isActive(item.href)}
+						{@const active = activeHref === item.href}
 						<li>
 							<a
 								href={item.href}

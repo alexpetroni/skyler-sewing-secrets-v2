@@ -10,15 +10,17 @@
 		/** A named action, e.g. `?/suspend`. */
 		action: string;
 		class?: string;
+		/** Clear the fields after a successful submission; edit forms keep what was saved. */
+		resetForm?: boolean;
 		children: Snippet<[FormState<T>]>;
 	}
 
-	let { form, action, class: className = '', children }: Props = $props();
+	let { form, action, class: className = '', resetForm = true, children }: Props = $props();
 
 	// superForm takes the initial state once and follows the action results itself.
 	const { enhance, errors, message, submitting } = superForm(
 		untrack(() => form),
-		{ resetForm: true }
+		{ resetForm: untrack(() => resetForm) }
 	);
 </script>
 
