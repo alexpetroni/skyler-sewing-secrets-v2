@@ -1,5 +1,6 @@
-import type { ShopProduct } from '#lib/components/shop/types.ts';
+import type { ShopLesson, ShopProduct } from '#lib/components/shop/types.ts';
 import type { CatalogProduct, ProductLesson } from '#lib/server/modules/catalog/index.ts';
+import type { CartQuote, CartState, CartViewer } from '#lib/server/modules/commerce/index.ts';
 import { lessonHref } from '#lib/shared/lessons.ts';
 
 /**
@@ -18,14 +19,6 @@ export interface CataloguePage {
 	flagship: ShopCard | null;
 	bundles: ShopCard[];
 	singles: ShopCard[];
-}
-
-export interface ShopLesson {
-	id: string;
-	title: string;
-	durationSeconds: number | null;
-	/** Set for free previews only: anyone may watch them. */
-	previewHref: string | null;
 }
 
 export interface ProductPage extends ShopCard {
@@ -128,5 +121,35 @@ export async function productPage(
 		isFlagship,
 		lessons: isFlagship ? [] : published.map(toShopLesson),
 		outline
+	};
+}
+
+export interface CartPage {
+	quote: CartQuote;
+	/** The course the summary suggests, when `quote.suggestFlagship`. */
+	flagship: { id: string; slug: string; title: string; price: number } | null;
+}
+
+/** The signed-in buyer the cart resolves ownership against. */
+export function cartViewer(locals: App.Locals): CartViewer {
+	return locals.user ? { id: locals.user.id } : null;
+}
+
+/** The quoted cart, plus the course to suggest when the quote asks for it. */
+export async function cartPage(
+	locals: App.Locals,
+	state: CartState,
+	now = new Date()
+): Promise<CartPage> {
+	const { commerce, catalog } = locals.services;
+	const quote = await commerce.cart.quote(state, cartViewer(locals), now);
+	if (!quote.suggestFlagship) return { quote, flagship: null };
+	const courses = await catalog.listPublished({ kind: 'course', now });
+	const course = courses.find((product) => product.access_scope === 'all');
+	return {
+		quote,
+		flagship: course
+			? { id: course.id, slug: course.slug, title: course.title, price: course.pricing.price }
+			: null
 	};
 }

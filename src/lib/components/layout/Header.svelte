@@ -4,14 +4,17 @@
 	   rejects. */
 	import { page } from '$app/state';
 	import type { Viewer } from '#lib/shared/viewer.ts';
+	import CartBadge from '#lib/components/shop/CartBadge.svelte';
 	import Avatar from '#lib/components/ui/Avatar.svelte';
 	import OptimizedImage from '#lib/components/ui/OptimizedImage.svelte';
 
 	interface Props {
 		viewer?: Viewer | null;
+		/** Products in the cart cookie. */
+		cartCount?: number;
 	}
 
-	let { viewer = null }: Props = $props();
+	let { viewer = null, cartCount = 0 }: Props = $props();
 
 	let menuOpen = $state(false);
 	let userMenuOpen = $state(false);
@@ -224,6 +227,8 @@
 						</span>
 					</a>
 				{/if}
+
+				<CartBadge count={cartCount} />
 
 				<!-- Hamburger: two rules that fold into an X rather than swapping icons. -->
 				<button

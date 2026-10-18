@@ -3,8 +3,7 @@
 	import Seo from '#lib/components/Seo.svelte';
 	import AddToCartButton from '#lib/components/shop/AddToCartButton.svelte';
 	import PriceTag from '#lib/components/shop/PriceTag.svelte';
-	import { KIND_LABELS, type ShopProduct } from '#lib/components/shop/types.ts';
-	import type { ShopLesson } from '#lib/server/http/shop.ts';
+	import { KIND_LABELS, type ShopLesson, type ShopProduct } from '#lib/components/shop/types.ts';
 	import { durationMinutes, formatMinutes } from '#lib/shared/lessons.ts';
 	import type { PageProps } from './$types';
 

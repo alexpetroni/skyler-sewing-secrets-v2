@@ -20,7 +20,7 @@
 	{@render children()}
 {:else}
 	<div class="flex min-h-screen flex-col">
-		<Header viewer={data.viewer} />
+		<Header viewer={data.viewer} cartCount={data.cartCount} />
 
 		<main class="flex-1 overflow-x-hidden">
 			{@render children()}

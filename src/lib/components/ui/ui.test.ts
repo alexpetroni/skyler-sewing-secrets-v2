@@ -125,6 +125,17 @@ describe('Header', () => {
 		expect(body).not.toContain('aria-haspopup="menu"');
 	});
 
+	it('shows the cart badge with the count it is given', () => {
+		const empty = render(Header, { props: { viewer: null }, context: requestContext('/') });
+		expect(empty.body).toMatch(/<a[^>]*href="\/cart"[^>]*aria-label="Cart, empty"/);
+
+		const { body } = render(Header, {
+			props: { viewer: null, cartCount: 3 },
+			context: requestContext('/')
+		});
+		expect(body).toMatch(/<a[^>]*href="\/cart"[^>]*aria-label="Cart, 3 items"/);
+	});
+
 	it('shows the avatar initials menu for a signed-in viewer', () => {
 		const { body } = render(Header, {
 			props: { viewer: { name: 'Ada Lovelace', avatarUrl: null, isAdmin: false } },

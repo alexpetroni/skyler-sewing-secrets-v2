@@ -24,6 +24,15 @@ export interface ShopProduct {
 	pricing: ShopPricing;
 }
 
+/** A lesson a product page lists. */
+export interface ShopLesson {
+	id: string;
+	title: string;
+	durationSeconds: number | null;
+	/** Set for free previews only: anyone may watch them. */
+	previewHref: string | null;
+}
+
 /** One quoted cart line. */
 export interface ShopCartLine {
 	productId: string;
