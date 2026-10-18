@@ -19,7 +19,7 @@ const priceField = v.pipe(
 );
 
 /** Empty or missing → null; otherwise a date `Date.parse` accepts, stored as an ISO timestamp. */
-const optionalDateField = v.pipe(
+export const optionalDateField = v.pipe(
 	v.optional(v.nullable(v.string()), null),
 	v.transform((value) => (value && value.trim() !== '' ? value.trim() : null)),
 	v.check((value) => value === null || !Number.isNaN(Date.parse(value)), 'Must be a valid date'),
