@@ -1,0 +1,6 @@
+{
+	"crons": [
+		{ "path": "/api/jobs/expire-orders", "schedule": "*/15 * * * *" },
+		{ "path": "/api/jobs/sync-media", "schedule": "0 * * * *" }
+	]
+}
