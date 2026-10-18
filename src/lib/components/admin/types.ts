@@ -31,3 +31,21 @@ export interface PickerAsset {
 	duration_seconds: number | null;
 	thumbnail_url: string | null;
 }
+
+/** A lesson in the product editor's item picker (`catalog.searchLessons`). */
+export interface PickerLesson {
+	id: string;
+	title: string;
+	moduleTitle: string | null;
+	durationSeconds: number | null;
+	isPublished: boolean;
+	/** Products that already list the lesson. */
+	products: Array<{ id: string; title: string }>;
+}
+
+/** A product in the promotion scope picker. */
+export interface PickerProduct {
+	id: string;
+	title: string;
+	kind: 'course' | 'bundle' | 'single';
+}

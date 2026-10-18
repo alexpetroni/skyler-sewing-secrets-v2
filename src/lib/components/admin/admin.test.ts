@@ -2,10 +2,12 @@ import { createRawSnippet } from 'svelte';
 import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 import DataTable from './DataTable.svelte';
+import LessonPicker from './LessonPicker.svelte';
 import MarkdownEditor from './MarkdownEditor.svelte';
 import MediaPicker from './MediaPicker.svelte';
+import ProductMultiSelect from './ProductMultiSelect.svelte';
 import Stat from './Stat.svelte';
-import type { DataTableColumn, PickerAsset } from './types.ts';
+import type { DataTableColumn, PickerAsset, PickerLesson, PickerProduct } from './types.ts';
 
 interface Row {
 	email: string;
@@ -179,5 +181,101 @@ describe('MarkdownEditor', () => {
 		expect(body).toMatch(/<textarea[^>]*aria-invalid="true"/);
 		expect(body).toContain('The preview appears here as you type.');
 		expect(body).toContain('Content is too long');
+	});
+});
+
+/** Undoes the attribute escaping SSR applies to a hidden field's value. */
+function unescapeAttribute(value: string): string {
+	return value.replaceAll('&quot;', '"').replaceAll('&amp;', '&');
+}
+
+describe('LessonPicker', () => {
+	const lesson = (id: string, title: string, extra: Partial<PickerLesson> = {}): PickerLesson => ({
+		id,
+		title,
+		moduleTitle: null,
+		durationSeconds: 90,
+		isPublished: true,
+		products: [],
+		...extra
+	});
+
+	it('renders the hidden JSON field with the ids in the given order', () => {
+		const { body } = render(LessonPicker, {
+			props: {
+				lessons: [
+					lesson('22222222-2222-4222-8222-222222222222', 'Zips', { moduleTitle: 'Closures' }),
+					lesson('11111111-1111-4111-8111-111111111111', 'Hems')
+				]
+			}
+		});
+		const match = /<input type="hidden" name="lessonIds" value="([^"]*)"/.exec(body);
+		expect(match).not.toBeNull();
+		expect(JSON.parse(unescapeAttribute(match?.[1] ?? ''))).toEqual([
+			'22222222-2222-4222-8222-222222222222',
+			'11111111-1111-4111-8111-111111111111'
+		]);
+		// Running total, the module of the first and a standalone badge for the second.
+		expect(body).toContain('2 videos, 3 min');
+		expect(body).toContain('Closures');
+		expect(body).toContain('Standalone');
+	});
+
+	it('lists other products as “also in”, leaving out the one being edited', () => {
+		const { body } = render(LessonPicker, {
+			props: {
+				productId: 'self',
+				lessons: [
+					lesson('33333333-3333-4333-8333-333333333333', 'Zips', {
+						products: [
+							{ id: 'self', title: 'This bundle' },
+							{ id: 'other', title: 'Zippers Pack' }
+						]
+					})
+				]
+			}
+		});
+		expect(body).toContain('Also in: Zippers Pack');
+		expect(body).not.toContain('This bundle');
+	});
+
+	it('renders an empty list as [] and the course as read-only without a field', () => {
+		const empty = render(LessonPicker, { props: { lessons: [] } }).body;
+		expect(empty).toContain('name="lessonIds" value="[]"');
+		expect(empty).toContain('No videos yet.');
+
+		const course = render(LessonPicker, { props: { lessons: [], disabled: true } }).body;
+		expect(course).not.toContain('name="lessonIds"');
+		expect(course).toContain('It has no item list to edit.');
+	});
+});
+
+describe('ProductMultiSelect', () => {
+	const products: PickerProduct[] = [
+		{ id: 'p-1', title: 'Zippers Pack', kind: 'bundle' },
+		{ id: 'p-2', title: 'Hems', kind: 'single' },
+		{ id: 'p-3', title: 'The Course', kind: 'course' }
+	];
+
+	it('renders one productIds checkbox per product, ticking the saved scope', () => {
+		const { body } = render(ProductMultiSelect, {
+			props: { products, selectedIds: ['p-2', 'p-3'], error: 'Select at least one product' }
+		});
+		const boxes = [
+			...body.matchAll(/<input type="checkbox" name="productIds" value="([^"]+)"([^>]*)>/g)
+		];
+		expect(boxes.map((box) => [box[1], /\bchecked\b/.test(box[2])])).toEqual([
+			['p-1', false],
+			['p-2', true],
+			['p-3', true]
+		]);
+		expect(body).toContain('2 selected');
+		expect(body).toContain('Select at least one product');
+	});
+
+	it('says so when there is nothing to choose', () => {
+		const { body } = render(ProductMultiSelect, { props: { products: [] } });
+		expect(body).toContain('No published products yet.');
+		expect(body).toContain('0 selected');
 	});
 });
