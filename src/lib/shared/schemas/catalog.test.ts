@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import * as v from 'valibot';
-import { productInputSchema } from './catalog.ts';
+import {
+	productContentsSchemas,
+	productCreateSchema,
+	productInputSchema,
+	productPricingSchema,
+	toUtcDateTimeLocal
+} from './catalog.ts';
 
 const valid = {
 	kind: 'bundle',
@@ -72,5 +78,55 @@ describe('productInputSchema', () => {
 		expect(issuesOf({ ...valid, coverImageUrl: 'http://cdn.example.com/a.jpg' })).toEqual([
 			'Must be an https:// URL'
 		]);
+	});
+});
+
+describe('product editor schemas', () => {
+	const A = '00000000-0000-4000-8000-00000000000a';
+	const B = '00000000-0000-4000-8000-00000000000b';
+
+	it('contents dedupe in order and apply the rule of the kind', () => {
+		const ids = JSON.stringify([B, A, B]);
+		expect(v.parse(productContentsSchemas.bundle, { lessonIds: ids })).toEqual({
+			lessonIds: [B, A]
+		});
+		expect(v.safeParse(productContentsSchemas.single, { lessonIds: ids }).success).toBe(false);
+		expect(v.parse(productContentsSchemas.single, { lessonIds: JSON.stringify([A, A]) })).toEqual({
+			lessonIds: [A]
+		});
+		expect(v.parse(productContentsSchemas.course, {})).toEqual({ lessonIds: [] });
+		expect(
+			v.safeParse(productContentsSchemas.bundle, { lessonIds: '{"a":1}' }).issues?.[0].message
+		).toBe('Invalid item list');
+	});
+
+	it('create derives the slug from the title and fills the defaults', () => {
+		expect(
+			v.parse(productCreateSchema, { kind: 'single', title: 'Hems & Edges', price: '9.5' })
+		).toMatchObject({ slug: 'hems-and-edges', price: 950, salePrice: null, lessonId: '' });
+		expect(
+			v.safeParse(productCreateSchema, { kind: 'bundle', title: '!!!', price: '9' }).issues?.[0]
+				.message
+		).toBe('Slug must be lowercase letters, numbers, and hyphens only');
+	});
+
+	it('pricing floors the price at 30p and round-trips the UTC sale window', () => {
+		expect(v.safeParse(productPricingSchema, { price: '0.29' }).issues?.[0].message).toBe(
+			'Price must be at least £0.30'
+		);
+		const output = v.parse(productPricingSchema, {
+			price: '10',
+			salePrice: '',
+			saleStartsAt: '2026-11-01T09:30',
+			saleEndsAt: ''
+		});
+		expect(output).toEqual({
+			price: 1000,
+			salePrice: null,
+			saleStartsAt: '2026-11-01T09:30:00.000Z',
+			saleEndsAt: null
+		});
+		expect(toUtcDateTimeLocal(output.saleStartsAt)).toBe('2026-11-01T09:30');
+		expect(toUtcDateTimeLocal(null)).toBe('');
 	});
 });

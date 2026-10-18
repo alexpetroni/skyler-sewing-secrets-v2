@@ -5,6 +5,8 @@ import {
 	cartItemSchema,
 	cartPromoSchema,
 	cartStateSchema,
+	generatePromoCode,
+	promoFormSchema,
 	promoInputSchema
 } from './commerce.ts';
 
@@ -170,6 +172,64 @@ describe('bulkGenerateSchema', () => {
 		).toEqual(['A percentage must be between 1 and 99']);
 		expect(issuesOf(bulkGenerateSchema, { ...valid, appliesTo: 'products' })).toEqual([
 			'Select at least one product'
+		]);
+	});
+});
+
+describe('generatePromoCode', () => {
+	it('returns eight upper-case letters and digits that pass the code pattern', () => {
+		const codes = Array.from({ length: 50 }, generatePromoCode);
+		for (const code of codes) {
+			expect(code).toMatch(/^[A-Z0-9]{8}$/);
+			expect(v.is(promoInputSchema.pipe[0].entries.code, code)).toBe(true);
+		}
+		expect(new Set(codes).size).toBeGreaterThan(45);
+	});
+});
+
+describe('promoFormSchema', () => {
+	const form = {
+		code: ' gift ',
+		discountType: 'fixed',
+		discountValue: '4.99',
+		appliesTo: 'all',
+		productIds: [PRODUCT],
+		minSubtotal: '',
+		maxRedemptions: null,
+		maxRedemptionsPerUser: 1,
+		startsAt: '2026-11-01T09:30',
+		endsAt: '',
+		description: '',
+		isActive: true,
+		stackableWithSale: false
+	};
+
+	it('converts pounds to pence, reads datetime-local as UTC and drops an unused scope', () => {
+		const output = v.parse(promoFormSchema, form);
+		expect(output).toMatchObject({
+			code: 'GIFT',
+			discountValue: 499,
+			minSubtotal: null,
+			productIds: [],
+			startsAt: '2026-11-01T09:30:00.000Z',
+			endsAt: null
+		});
+		// The output is a valid PromoInput.
+		expect(v.is(promoInputSchema, output)).toBe(true);
+	});
+
+	it('refuses a fixed amount that is not pounds and pence, and a fractional percentage', () => {
+		const fixed = v.safeParse(promoFormSchema, { ...form, discountValue: '4.999' });
+		expect(fixed.issues?.map((issue) => issue.message)).toEqual([
+			'Enter pounds and pence, e.g. 5 or 4.99'
+		]);
+		const percent = v.safeParse(promoFormSchema, {
+			...form,
+			discountType: 'percentage',
+			discountValue: '12.5'
+		});
+		expect(percent.issues?.map((issue) => issue.message)).toEqual([
+			'A percentage must be between 1 and 99'
 		]);
 	});
 });
