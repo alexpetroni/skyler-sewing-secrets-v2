@@ -22,12 +22,17 @@ export async function readJson<S extends v.GenericSchema>(
 	return { ok: true, data: parsed.output };
 }
 
+/** Whether a thrown value is a service's expected refusal rather than a bug. */
+export function isDomainError(err: unknown): err is DomainError {
+	return err instanceof DomainError;
+}
+
 /**
  * A service's `DomainError` as a JSON response: `*_NOT_FOUND` is a 404, every
  * other refusal a 400. Anything else is a bug and is rethrown (a 500).
  */
 export function domainErrorResponse(err: unknown): Response {
-	if (!(err instanceof DomainError)) throw err;
+	if (!isDomainError(err)) throw err;
 	const status = err.code.endsWith('_NOT_FOUND') ? 404 : 400;
 	return Response.json({ error: err.message, code: err.code }, { status });
 }
