@@ -20,11 +20,7 @@ export const emptyActionSchema = v.object({});
 export const suspendSchema = v.object({ reason: reasonField });
 
 export const grantProductSchema = v.object({
-	productId: v.pipe(
-		v.optional(v.string(), ''),
-		v.nonEmpty('Choose a product'),
-		v.uuid('Choose a product')
-	),
+	productId: v.pipe(v.optional(v.string(), ''), v.uuid('Choose a product')),
 	reason: reasonField
 });
 

@@ -109,6 +109,8 @@ export function requireAdmin(event: RequestEvent): SignedIn {
 }
 
 /** What the page shell may know about the visitor; nothing else leaves the server. */
+export function toViewer(profile: Profile): Viewer;
+export function toViewer(profile: Profile | null | undefined): Viewer | null;
 export function toViewer(profile: Profile | null | undefined): Viewer | null {
 	if (!profile) return null;
 	return {
