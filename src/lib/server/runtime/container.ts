@@ -5,6 +5,7 @@ import {
 	type Auth,
 	type AuthService
 } from '#lib/server/modules/auth/index.ts';
+import { createContentService, type ContentService } from '#lib/server/modules/content/index.ts';
 import { passwordResetEmail } from '#lib/server/modules/marketing/index.ts';
 import { createMediaService, type MediaService } from '#lib/server/modules/media/index.ts';
 import {
@@ -35,6 +36,7 @@ export interface Services {
 	mailer: Mailer;
 	limiter: RequestLimiter;
 	media: MediaService;
+	content: ContentService;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
 }
@@ -79,6 +81,7 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		mailer,
 		limiter: createRequestLimiter({ db }),
 		media: createMediaService({ db, videoHost, log: logger }),
+		content: createContentService({ db, log: logger }),
 		googleEnabled: config.google !== undefined
 	};
 }
