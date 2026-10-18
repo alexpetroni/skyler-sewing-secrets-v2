@@ -78,3 +78,27 @@ export type LessonInput = v.InferOutput<typeof lessonInputSchema>;
 export const reorderSchema = v.object({
 	ids: v.pipe(v.array(idSchema), v.nonEmpty('Nothing to reorder'))
 });
+
+/** Longest playback position accepted, in seconds (24 hours, as legacy). */
+export const MAX_POSITION_SECONDS = 86_400;
+
+/** `POST /api/progress`: either field may be sent alone (the heartbeat sends only the position). */
+export const progressInputSchema = v.object({
+	lessonId: idSchema,
+	completed: v.optional(v.boolean()),
+	positionSeconds: v.optional(
+		v.pipe(
+			v.number(),
+			v.integer(),
+			v.minValue(0),
+			v.maxValue(MAX_POSITION_SECONDS, 'Position must be at most a day')
+		)
+	)
+});
+export type ProgressBody = v.InferOutput<typeof progressInputSchema>;
+
+/** `GET /api/progress?lessonId=…&moduleId=…`: both optional, both UUIDs when present. */
+export const progressQuerySchema = v.object({
+	lessonId: v.optional(idSchema),
+	moduleId: v.optional(idSchema)
+});

@@ -13,6 +13,7 @@ export {
 	type OutlineLesson,
 	type OutlineModule,
 	type Progress,
+	type ProgressFilter,
 	type ProgressInput,
 	type ProgressLesson,
 	type ProgressSummary

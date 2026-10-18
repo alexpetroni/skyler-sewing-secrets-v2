@@ -392,6 +392,19 @@ describe('createContentService', () => {
 			expect(await content.lessons.getBySlugs('basics', 'missing')).toBeNull();
 		});
 
+		it('finds a lesson by id, honouring publishedOnly', async () => {
+			const { content } = setup();
+			const live = await content.lessons.create(lessonInput({ isPublished: true }));
+			const draft = await content.lessons.create(lessonInput({ slug: 'draft' }));
+
+			expect((await content.lessons.getById(live.id, { publishedOnly: true }))?.slug).toBe(
+				'pinning'
+			);
+			expect(await content.lessons.getById(draft.id, { publishedOnly: true })).toBeNull();
+			expect((await content.lessons.getById(draft.id))?.slug).toBe('draft');
+			expect(await content.lessons.getById(crypto.randomUUID())).toBeNull();
+		});
+
 		it('lists standalone videos and module lessons in order with asset durations', async () => {
 			const { content } = setup();
 			const basics = await content.modules.create(moduleInput());
@@ -648,6 +661,35 @@ describe('createContentService', () => {
 
 			expect(await content.progress.forUser(userId)).toHaveLength(1);
 			expect(await content.progress.forUser(await createUser('other@example.com'))).toEqual([]);
+		});
+
+		it("filters a user's progress by lesson and by the published lessons of a module", async () => {
+			const { content } = setup();
+			const userId = await createUser();
+			const basics = await content.modules.create(moduleInput());
+			const inModule = await content.lessons.create(
+				lessonInput({ moduleId: basics.id, isPublished: true })
+			);
+			const later = await content.lessons.create(
+				lessonInput({ moduleId: basics.id, slug: 'later', isPublished: true })
+			);
+			const standalone = await content.lessons.create(
+				lessonInput({ slug: 'standalone', isPublished: true })
+			);
+			for (const lesson of [inModule, later, standalone]) {
+				await content.progress.upsert({ userId, lessonId: lesson.id, positionSeconds: 10 });
+			}
+			// Unpublished after progress was recorded: no longer part of the module filter.
+			await content.lessons.update(later.id, {
+				...lessonInput({ moduleId: basics.id, slug: 'later' }),
+				isPublished: false
+			});
+
+			const byLesson = await content.progress.forUser(userId, { lessonId: standalone.id });
+			expect(byLesson.map((row) => row.lesson_id)).toEqual([standalone.id]);
+			const byModule = await content.progress.forUser(userId, { moduleId: basics.id });
+			expect(byModule.map((row) => row.lesson_id)).toEqual([inModule.id]);
+			expect(await content.progress.forUser(userId)).toHaveLength(3);
 		});
 
 		it('summarises progress across the course outline', async () => {

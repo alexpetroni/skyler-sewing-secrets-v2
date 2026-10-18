@@ -1,7 +1,11 @@
 import { and, asc, desc, eq, gt, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import { schema, withTx, type Db, type Tx } from '#lib/server/db/index.ts';
 import type { Logger } from '#lib/server/platform/index.ts';
-import type { LessonInput, ModuleInput } from '#lib/shared/schemas/content.ts';
+import {
+	MAX_POSITION_SECONDS,
+	type LessonInput,
+	type ModuleInput
+} from '#lib/shared/schemas/content.ts';
 import { DomainError } from '../errors.ts';
 import { renderMarkdown } from './markdown.ts';
 
@@ -13,8 +17,7 @@ export type LessonResource = typeof lesson_resources.$inferSelect;
 export type Progress = typeof user_progress.$inferSelect;
 export type MediaAssetRow = typeof media_assets.$inferSelect;
 
-/** Longest playback position accepted, in seconds (24 hours, as legacy). */
-export const MAX_POSITION_SECONDS = 86_400;
+export { MAX_POSITION_SECONDS };
 
 export interface OutlineLesson {
 	id: string;
@@ -90,6 +93,11 @@ export interface ProgressInput {
 	positionSeconds?: number;
 }
 
+export interface ProgressFilter {
+	lessonId?: string;
+	moduleId?: string;
+}
+
 interface PublishedFilter {
 	publishedOnly?: boolean;
 }
@@ -119,6 +127,7 @@ export interface ContentService {
 			params?: PublishedFilter
 		): Promise<{ module: Module; lesson: Lesson } | null>;
 		getStandaloneBySlug(slug: string, params?: PublishedFilter): Promise<Lesson | null>;
+		getById(id: string, params?: PublishedFilter): Promise<Lesson | null>;
 		listStandalone(params?: PublishedFilter): Promise<Lesson[]>;
 		listByModule(moduleId: string): Promise<Lesson[]>;
 		/** The attached asset's duration; null without an asset or before Bunny reports one. */
@@ -133,7 +142,8 @@ export interface ContentService {
 	};
 	progress: {
 		upsert(input: ProgressInput): Promise<Progress>;
-		forUser(userId: string): Promise<Progress[]>;
+		/** Newest first; `moduleId` narrows to the module's published lessons. */
+		forUser(userId: string, filter?: ProgressFilter): Promise<Progress[]>;
 		/** Progress across the course outline (published course modules and lessons). */
 		summary(userId: string): Promise<ProgressSummary>;
 		continueWatching(userId: string, limit: number): Promise<ProgressLesson[]>;
@@ -538,6 +548,17 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 				return lesson ?? null;
 			},
 
+			async getById(id, { publishedOnly = false } = {}) {
+				const filters: SQL[] = [eq(lessons.id, id)];
+				if (publishedOnly) filters.push(eq(lessons.is_published, true));
+				const [lesson] = await db
+					.select()
+					.from(lessons)
+					.where(and(...filters))
+					.limit(1);
+				return lesson ?? null;
+			},
+
 			async listStandalone({ publishedOnly = false } = {}) {
 				const filters: SQL[] = [isNull(lessons.module_id)];
 				if (publishedOnly) filters.push(eq(lessons.is_published, true));
@@ -646,11 +667,20 @@ export function createContentService({ db, log }: CreateContentServiceDeps): Con
 				return row;
 			},
 
-			async forUser(userId) {
+			async forUser(userId, { lessonId, moduleId } = {}) {
+				const filters: SQL[] = [eq(user_progress.user_id, userId)];
+				if (lessonId) filters.push(eq(user_progress.lesson_id, lessonId));
+				if (moduleId) {
+					const moduleLessons = db
+						.select({ id: lessons.id })
+						.from(lessons)
+						.where(and(eq(lessons.module_id, moduleId), eq(lessons.is_published, true)));
+					filters.push(inArray(user_progress.lesson_id, moduleLessons));
+				}
 				return db
 					.select()
 					.from(user_progress)
-					.where(eq(user_progress.user_id, userId))
+					.where(and(...filters))
 					.orderBy(desc(user_progress.updated_at), asc(user_progress.id));
 			},
 
