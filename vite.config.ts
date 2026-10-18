@@ -4,13 +4,18 @@ import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-vercel';
 import { sveltekit } from '@sveltejs/kit/vite';
 
+type KitOptions = NonNullable<Parameters<typeof sveltekit>[0]>;
+type ImgSrc = NonNullable<NonNullable<NonNullable<KitOptions['csp']>['directives']>['img-src']>;
+
 export default defineConfig(({ mode }) => {
 	// The only deployment-specific directive: the image pull zone. It is read
 	// at build time from the variable src/env.ts declares; `https://*.b-cdn.net`
 	// already covers every Bunny pull zone, so the build needs no environment.
 	const { PUBLIC_BUNNY_CDN_URL } = loadEnv(mode, process.cwd(), 'PUBLIC_BUNNY_CDN_URL');
-	const imgSrc = ['self', 'data:', 'blob:', 'https://*.b-cdn.net'];
-	if (PUBLIC_BUNNY_CDN_URL) imgSrc.push(new URL(PUBLIC_BUNNY_CDN_URL).origin);
+	const imgSrc: ImgSrc = ['self', 'data:', 'blob:', 'https://*.b-cdn.net'];
+	// `new URL` has validated the host; the template-literal Source type cannot see that.
+	if (PUBLIC_BUNNY_CDN_URL)
+		imgSrc.push(`https://${new URL(PUBLIC_BUNNY_CDN_URL).host}` as ImgSrc[number]);
 
 	return {
 		plugins: [

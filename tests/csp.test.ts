@@ -39,9 +39,11 @@ describe('Content Security Policy configuration', () => {
 
 	it('allows images from self, data, blob and the Bunny pull zones', () => {
 		expect(cspBlock).toContain("'img-src': imgSrc");
-		expect(config).toContain("const imgSrc = ['self', 'data:', 'blob:', 'https://*.b-cdn.net']");
+		expect(config).toContain("= ['self', 'data:', 'blob:', 'https://*.b-cdn.net']");
 		// The configured pull zone host joins the list at build time.
-		expect(config).toContain('imgSrc.push(new URL(PUBLIC_BUNNY_CDN_URL).origin)');
+		expect(config).toContain(
+			'imgSrc.push(`https://${new URL(PUBLIC_BUNNY_CDN_URL).host}` as ImgSrc[number])'
+		);
 	});
 
 	it('upgrades insecure requests', () => {
