@@ -1,29 +1,11 @@
 import { createAuth, createAuthService } from '../../src/lib/server/modules/auth/index.ts';
 import type { Db } from '../../src/lib/server/db/index.ts';
-import type { LogFields, Logger } from '../../src/lib/server/platform/logger.ts';
+import { createFakeLogger, type LogEntry } from '../../src/lib/server/platform/fakes/logger.ts';
 import type { Services } from '../../src/lib/server/runtime/container.ts';
 
 export const TEST_SITE_URL = 'http://localhost:5173';
 
-export interface LogEntry {
-	level: 'debug' | 'info' | 'warn' | 'error';
-	message: string;
-	fields?: LogFields;
-}
-
-/** A logger that keeps every entry in memory. */
-export function createMemoryLogger(entries: LogEntry[] = [], bindings: LogFields = {}): Logger {
-	const push = (level: LogEntry['level'], message: string, fields?: LogFields) => {
-		entries.push({ level, message, fields: { ...bindings, ...fields } });
-	};
-	return {
-		debug: (m, f) => push('debug', m, f),
-		info: (m, f) => push('info', m, f),
-		warn: (m, f) => push('warn', m, f),
-		error: (m, f) => push('error', m, f),
-		child: (childBindings) => createMemoryLogger(entries, { ...bindings, ...childBindings })
-	};
-}
+export type { LogEntry };
 
 export interface TestServices extends Services {
 	/** Reset emails the fake mailer "sent". */
@@ -41,11 +23,11 @@ export function createTestServices(
 	overrides: { googleEnabled?: boolean } = {}
 ): TestServices {
 	const resetEmails: TestServices['resetEmails'] = [];
-	const logEntries: LogEntry[] = [];
 	const google = overrides.googleEnabled
 		? { clientId: 'google-client-id', clientSecret: 'google-client-secret' }
 		: undefined;
 
+	const logger = createFakeLogger();
 	const auth = createAuth({
 		db,
 		secret: 'test-secret-that-is-long-enough-for-better-auth',
@@ -60,10 +42,10 @@ export function createTestServices(
 		db,
 		auth,
 		users: createAuthService({ db }),
-		logger: createMemoryLogger(logEntries),
+		logger,
 		googleEnabled: google !== undefined,
 		resetEmails,
-		logEntries
+		logEntries: logger.entries
 	};
 }
 

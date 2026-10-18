@@ -5,7 +5,7 @@ import {
 	type Auth,
 	type AuthService
 } from '#lib/server/modules/auth/index.ts';
-import { createConsoleLogger, type Logger } from '#lib/server/platform/logger.ts';
+import { createLogger, type Logger } from '#lib/server/platform/logger.ts';
 import { getRuntimeConfig, type RuntimeConfig } from './env.ts';
 
 /**
@@ -23,7 +23,7 @@ export interface Services {
 
 /** Builds the services from an explicit configuration; `getServices` caches the result. */
 export async function createServices(config: RuntimeConfig): Promise<Services> {
-	const logger = createConsoleLogger();
+	const logger = createLogger({ level: 'info' });
 	const db = await createDb({ url: config.databaseUrl, driver: config.databaseDriver });
 	const auth = createAuth({
 		db,

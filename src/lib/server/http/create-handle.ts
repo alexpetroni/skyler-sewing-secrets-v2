@@ -8,7 +8,7 @@ import {
 	resolveAccess,
 	type Profile
 } from '#lib/server/modules/auth/index.ts';
-import { createConsoleLogger, type Logger } from '#lib/server/platform/logger.ts';
+import { createLogger, type Logger } from '#lib/server/platform/logger.ts';
 import type { Services } from '#lib/server/runtime/container.ts';
 import { createMaintenanceReader, type MaintenanceReader } from './maintenance.ts';
 import { withSecurityHeaders } from './security-headers.ts';
@@ -169,8 +169,8 @@ const GENERIC_5XX_MESSAGE = 'Something went wrong. Please try again.';
 /**
  * Unexpected errors are logged under an id and the client gets a generic
  * message; expected ones (`error()`, 404s) keep their message and gain the id.
- * Never throws: if the services cannot be built, logging falls back to the
- * console logger.
+ * Never throws: if the services cannot be built, logging falls back to a
+ * standalone JSON logger.
  */
 export function createHandleError(options: {
 	getServices: () => Promise<Pick<Services, 'logger'>>;
@@ -181,7 +181,7 @@ export function createHandleError(options: {
 		const logger: Logger = await options
 			.getServices()
 			.then((services) => services.logger)
-			.catch(() => createConsoleLogger());
+			.catch(() => createLogger({ level: 'info' }));
 
 		const fields = {
 			errorId,
