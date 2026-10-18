@@ -27,6 +27,7 @@ describe('createHandle', () => {
 	const { db } = useTestDb();
 	let services: TestServices;
 	let handle: Handle;
+	let memberId: string;
 	let memberCookie: string;
 	let adminCookie: string;
 	let suspendedAdminCookie: string;
@@ -35,7 +36,7 @@ describe('createHandle', () => {
 		services = createTestServices(db());
 		handle = createHandle({ getServices: async () => services, isMaintenanceExempt });
 
-		const memberId = await services.users.createCredentialUser({
+		memberId = await services.users.createCredentialUser({
 			email: 'member@example.com',
 			password: PASSWORD,
 			fullName: 'Member'
@@ -60,8 +61,26 @@ describe('createHandle', () => {
 		memberCookie = await signInCookie(services, 'member@example.com', PASSWORD);
 		adminCookie = await signInCookie(services, 'admin@example.com', PASSWORD);
 		suspendedAdminCookie = await signInCookie(services, 'suspended-admin@example.com', PASSWORD);
-		void memberId;
 	});
+
+	/** The flagship product; whoever owns it has all access. */
+	async function grantAllAccess(userId: string): Promise<void> {
+		const course = await services.catalog.create({
+			kind: 'course',
+			slug: 'the-course',
+			title: 'The Course',
+			tagline: '',
+			descriptionMd: '',
+			coverImageUrl: '',
+			price: 14900,
+			salePrice: null,
+			saleStartsAt: null,
+			saleEndsAt: null,
+			isFeatured: false,
+			sortOrder: 0
+		});
+		await services.entitlements.grant({ userId, productId: course.id, source: 'migration' });
+	}
 
 	async function call(options: {
 		method?: string;
@@ -132,6 +151,26 @@ describe('createHandle', () => {
 			const result = await call({ path: '/library', cookie: suspendedAdminCookie });
 
 			expect(result.event.locals.access).toEqual({
+				isAdmin: false,
+				isSuspended: true,
+				allAccess: false
+			});
+		});
+
+		it('a user with an active all-access entitlement gets access.allAccess = true', async () => {
+			await grantAllAccess(memberId);
+
+			const result = await call({ path: '/library', cookie: memberCookie });
+			expect(result.event.locals.access).toEqual({
+				isAdmin: false,
+				isSuspended: false,
+				allAccess: true
+			});
+
+			// Suspension overrides ownership: a suspended member has no access.
+			await db().update(profiles).set({ is_suspended: true }).where(eq(profiles.id, memberId));
+			const suspended = await call({ path: '/library', cookie: memberCookie });
+			expect(suspended.event.locals.access).toEqual({
 				isAdmin: false,
 				isSuspended: true,
 				allAccess: false

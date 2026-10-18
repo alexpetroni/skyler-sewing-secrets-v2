@@ -66,9 +66,9 @@ export function createHandle(options: CreateHandleOptions): Handle {
 		}
 	};
 
-	// (b) Session + profile → locals; a missing profile is self-healed.
+	// (b) Session + profile + all-access flag → locals; a missing profile is self-healed.
 	const resolveSession: Handle = async ({ event, resolve }) => {
-		const { auth, users, logger } = event.locals.services;
+		const { auth, users, entitlements, logger } = event.locals.services;
 		const sessionData = await auth.api.getSession({ headers: event.request.headers });
 		event.locals.user = sessionData?.user ?? null;
 
@@ -90,8 +90,11 @@ export function createHandle(options: CreateHandleOptions): Handle {
 			}
 		}
 
+		const allAccess = sessionData?.user
+			? await entitlements.hasAllAccess(sessionData.user.id)
+			: false;
 		event.locals.profile = profile;
-		event.locals.access = resolveAccess(profile);
+		event.locals.access = resolveAccess(profile, allAccess);
 		return resolve(event);
 	};
 

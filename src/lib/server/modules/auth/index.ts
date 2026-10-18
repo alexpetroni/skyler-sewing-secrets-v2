@@ -11,6 +11,7 @@ export {
 	isActiveAdmin,
 	isSuspended,
 	NO_ACCESS,
+	requireActiveMember,
 	requireAdmin,
 	requireUser,
 	resolveAccess,

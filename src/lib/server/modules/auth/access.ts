@@ -9,8 +9,7 @@ import type { Profile } from './service.ts';
  * the hook already gated the route.
  *
  * Invariant: a suspended account is neither a member nor an admin, whatever
- * its `is_member` / `is_admin` flags say. Member and entitlement predicates
- * arrive with the entitlements module (PHASE-08).
+ * its `is_member` / `is_admin` flags say or what it owns.
  */
 
 /** Message shown to suspended members wherever access is refused. */
@@ -19,10 +18,11 @@ export const SUSPENDED_MESSAGE =
 
 type ProfileFlags = Pick<Profile, 'is_admin' | 'is_suspended'>;
 
-/** What the hook resolved for the request; `allAccess` is filled by PHASE-08. */
+/** What the hook resolved for the request. */
 export interface Access {
 	isAdmin: boolean;
 	isSuspended: boolean;
+	/** Owns an active all-access entitlement (the flagship course) and is not suspended. */
 	allAccess: boolean;
 }
 
@@ -37,12 +37,12 @@ export function isActiveAdmin(profile: ProfileFlags | null | undefined): boolean
 	return !!profile?.is_admin && !profile.is_suspended;
 }
 
-export function resolveAccess(profile: ProfileFlags | null | undefined): Access {
+/** `allAccess` is what the entitlements module found for the user; suspension overrides it. */
+export function resolveAccess(profile: ProfileFlags | null | undefined, allAccess = false): Access {
 	return {
 		isAdmin: isActiveAdmin(profile),
 		isSuspended: isSuspended(profile),
-		// Computed from entitlements in PHASE-08; until then nobody has it.
-		allAccess: false
+		allAccess: !!profile && allAccess && !profile.is_suspended
 	};
 }
 
@@ -69,6 +69,23 @@ export function requireUser(event: RequestEvent, redirectTo?: string): SignedIn 
 		error(403, SUSPENDED_MESSAGE);
 	}
 	return { user, profile };
+}
+
+/**
+ * For member pages (library, course, videos): a signed-in, unsuspended
+ * account that owns something, whether the all-access course or a single
+ * product. Signed-out visitors go to sign-in, suspended accounts get a 403
+ * as in `requireUser`, and everyone else is sent to the catalogue.
+ */
+export async function requireActiveMember(
+	event: RequestEvent,
+	redirectTo?: string
+): Promise<SignedIn> {
+	const signedIn = requireUser(event, redirectTo);
+	if (event.locals.access.allAccess) return signedIn;
+	const owned = await event.locals.services.entitlements.ownedProductIds(signedIn.user.id);
+	if (owned.length === 0) redirect(303, '/catalogue');
+	return signedIn;
 }
 
 /**
