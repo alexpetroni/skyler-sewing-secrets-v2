@@ -25,8 +25,18 @@
 		{ name: 'Promotions', href: '/admin/promotions', icon: 'tag' },
 		{ name: 'Orders', href: '/admin/orders', icon: 'currency' },
 		{ name: 'Users', href: '/admin/users', icon: 'users' },
-		{ name: 'Content', href: '/admin/content', icon: 'document' },
-		{ name: 'Inbox', href: '/admin/inbox', icon: 'mail' },
+		{
+			name: 'Content',
+			href: '/admin/content/blog',
+			icon: 'document',
+			sections: ['/admin/content/blog', '/admin/content/faq', '/admin/content/testimonials']
+		},
+		{
+			name: 'Inbox',
+			href: '/admin/inbox/contacts',
+			icon: 'mail',
+			sections: ['/admin/inbox']
+		},
 		{ name: 'Settings', href: '/admin/settings', icon: 'cog' },
 		{ name: 'Audit log', href: '/admin/audit', icon: 'clipboard' }
 	];

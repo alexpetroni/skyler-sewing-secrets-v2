@@ -1,5 +1,14 @@
 import * as v from 'valibot';
-import { CONTENT_MD_MAX, idSchema, MAX_POSITION_SECONDS, TITLE_MAX } from './content.ts';
+import {
+	CONTENT_MD_MAX,
+	httpsUrlField,
+	idSchema,
+	MAX_POSITION_SECONDS,
+	orderIndexField,
+	slugField,
+	TITLE_MAX,
+	titleField
+} from './content.ts';
 
 /** One schema per admin form; the action decides with it, the page reuses it for errors. */
 
@@ -220,5 +229,113 @@ export const markdownPreviewSchema = v.object({
 	markdown: v.pipe(
 		v.string(),
 		v.maxLength(CONTENT_MD_MAX, `Content must be at most ${CONTENT_MD_MAX} characters`)
+	)
+});
+
+// Marketing content (blog, FAQ, testimonials), inbox and settings; rules kept
+// from `legacy/src/routes/admin/{blog,faq,testimonials}`.
+export const EXCERPT_MAX = 1000;
+export const FAQ_QUESTION_MAX = 500;
+export const FAQ_CATEGORY_MAX = 100;
+export const TESTIMONIAL_CONTENT_MAX = 2000;
+
+const optionalText = (max: number, label: string) =>
+	v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.maxLength(max, `${label} must be at most ${max} characters`)
+	);
+
+const requiredText = (max: number, label: string) =>
+	v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.nonEmpty(`${label} is required`),
+		v.maxLength(max, `${label} must be at most ${max} characters`)
+	);
+
+const markdownField = v.pipe(
+	v.optional(v.string(), ''),
+	v.maxLength(CONTENT_MD_MAX, `Content must be at most ${CONTENT_MD_MAX} characters`)
+);
+
+/**
+ * A blog post. `contentMd` may be left empty on a legacy post (its stored
+ * HTML is kept); the service refuses a new post without it.
+ */
+export const blogPostSchema = v.object({
+	title: titleField,
+	slug: slugField,
+	excerpt: optionalText(EXCERPT_MAX, 'Excerpt'),
+	featuredImageUrl: httpsUrlField,
+	contentMd: markdownField
+});
+
+export const faqItemSchema = v.object({
+	question: requiredText(FAQ_QUESTION_MAX, 'Question'),
+	answerMd: v.pipe(
+		markdownField,
+		v.check((value) => value.trim() !== '', 'Answer is required')
+	),
+	category: optionalText(FAQ_CATEGORY_MAX, 'Category'),
+	orderIndex: orderIndexField,
+	isPublished: v.optional(v.boolean(), false)
+});
+
+/**
+ * A per-row button in a list (FAQ up / down, testimonial publish / feature,
+ * contact mark-read): the action name carries what to do.
+ */
+export const rowActionSchema = v.object({ id: idSchema });
+
+export const testimonialSchema = v.object({
+	authorName: requiredText(TITLE_MAX, 'Author name'),
+	authorTitle: optionalText(TITLE_MAX, 'Author title'),
+	content: requiredText(TESTIMONIAL_CONTENT_MAX, 'Content'),
+	rating: v.pipe(
+		v.number('Choose a rating from 1 to 5'),
+		v.integer('Choose a rating from 1 to 5'),
+		v.minValue(1, 'Choose a rating from 1 to 5'),
+		v.maxValue(5, 'Choose a rating from 1 to 5')
+	),
+	country: optionalText(TITLE_MAX, 'Country'),
+	orderIndex: orderIndexField,
+	isFeatured: v.optional(v.boolean(), false)
+});
+
+/** The moderation list's position field. */
+export const testimonialOrderSchema = v.object({ id: idSchema, orderIndex: orderIndexField });
+
+export const subscriberStatuses = ['confirmed', 'unconfirmed', 'unsubscribed'] as const;
+export type SubscriberStatus = (typeof subscriberStatuses)[number];
+
+export const subscriberListQuerySchema = v.object({
+	status: optionalParam((value) =>
+		(subscriberStatuses as readonly string[]).includes(value)
+			? (value as SubscriberStatus)
+			: undefined
+	)
+});
+
+/** The phrase `ConfirmForm` asks for before maintenance mode is switched on. */
+export const MAINTENANCE_PHRASE = 'maintenance on';
+
+export const maintenanceOnSchema = v.object({
+	confirm: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.check(
+			(value) => value.toLowerCase() === MAINTENANCE_PHRASE,
+			'Type the phrase exactly to confirm'
+		)
+	)
+});
+
+/** The homepage preview lesson; empty = the first flagged free-preview lesson. */
+export const homePreviewSchema = v.object({
+	lessonId: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.check((value) => value === '' || v.is(idSchema, value), 'Choose a lesson')
 	)
 });

@@ -8,14 +8,14 @@ export const CONTENT_MD_MAX = 50_000;
 
 export const idSchema = v.pipe(v.string(), v.uuid('Invalid id'));
 
-const titleField = v.pipe(
+export const titleField = v.pipe(
 	v.optional(v.string(), ''),
 	v.trim(),
 	v.nonEmpty('Title is required'),
 	v.maxLength(TITLE_MAX, `Title must be at most ${TITLE_MAX} characters`)
 );
 
-const slugField = v.pipe(
+export const slugField = v.pipe(
 	v.optional(v.string(), ''),
 	v.trim(),
 	v.nonEmpty('Slug is required'),
@@ -29,14 +29,14 @@ const descriptionField = v.pipe(
 	v.maxLength(DESCRIPTION_MAX, `Description must be at most ${DESCRIPTION_MAX} characters`)
 );
 
-const orderIndexField = v.pipe(
+export const orderIndexField = v.pipe(
 	v.number('Must be a whole number'),
 	v.integer('Must be a whole number'),
 	v.minValue(0, 'Must be a whole number of at least 0')
 );
 
 /** Empty, or an absolute `https://` URL. */
-const httpsUrlField = v.pipe(
+export const httpsUrlField = v.pipe(
 	v.optional(v.string(), ''),
 	v.trim(),
 	v.check((value) => value === '' || /^https:\/\/[^\s]+$/i.test(value), 'Must be an https:// URL')

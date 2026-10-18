@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne, sql, type SQL } from 'drizzle-orm';
 import { schema, withTx, type Db, type Tx } from '#lib/server/db/index.ts';
 import type { Logger, Mailer, RequestLimiter } from '#lib/server/platform/index.ts';
 import type { ContactInput } from '#lib/shared/schemas/marketing.ts';
@@ -36,7 +36,11 @@ export interface BlogPostInput {
 	title: string;
 	slug: string;
 	excerpt: string;
-	contentMd: string;
+	/**
+	 * The Markdown body; null or blank leaves the stored content as it is (a
+	 * legacy post whose HTML has not been converted). A new post needs one.
+	 */
+	contentMd: string | null;
 	featuredImageUrl: string;
 }
 
@@ -90,6 +94,7 @@ export interface MarketingService {
 		getById(id: string): Promise<BlogPost | null>;
 		/** Created unpublished; `content_html` (and the legacy `content`) rendered from Markdown. */
 		create(input: BlogPostInput, actorId: string): Promise<BlogPost>;
+		/** Re-renders the content only when `contentMd` is given. */
 		update(id: string, input: BlogPostInput, actorId: string): Promise<BlogPost>;
 		/** Sets `published_at` the first time only; republishing keeps the original date. */
 		publish(id: string, actorId: string): Promise<BlogPost>;
@@ -103,6 +108,11 @@ export interface MarketingService {
 		getById(id: string): Promise<FaqItem | null>;
 		create(input: FaqInput, actorId: string): Promise<FaqItem>;
 		update(id: string, input: FaqInput, actorId: string): Promise<FaqItem>;
+		/**
+		 * Swaps the item with its neighbour within its category and renumbers
+		 * that category from 0; a no-op at either end.
+		 */
+		move(id: string, direction: 'up' | 'down', actorId: string): Promise<void>;
 		remove(id: string, actorId: string): Promise<void>;
 	};
 	testimonials: {
@@ -153,18 +163,24 @@ function blank(value: string): string | null {
 }
 
 function blogValues(input: BlogPostInput) {
-	// Always recomputed: HTML is never accepted from a caller. The legacy
-	// `content` column gets the same sanitised HTML while the legacy app runs.
-	const html = renderMarkdown(input.contentMd);
 	return {
 		title: input.title,
 		slug: input.slug,
 		excerpt: blank(input.excerpt),
-		content_md: input.contentMd,
-		content_html: html,
-		content: html,
 		featured_image_url: blank(input.featuredImageUrl)
 	};
+}
+
+/** The Markdown body when one was given; a blank one counts as not given. */
+function givenMarkdown(input: BlogPostInput): string | null {
+	return input.contentMd?.trim() ? input.contentMd : null;
+}
+
+function blogContentValues(contentMd: string) {
+	// Always recomputed: HTML is never accepted from a caller. The legacy
+	// `content` column gets the same sanitised HTML while the legacy app runs.
+	const html = renderMarkdown(contentMd);
+	return { content_md: contentMd, content_html: html, content: html };
 }
 
 function faqValues(input: FaqInput) {
@@ -309,10 +325,17 @@ export function createMarketingService(deps: CreateMarketingServiceDeps): Market
 
 		create: (input, actorId) =>
 			withTx(db, async (tx) => {
+				const contentMd = givenMarkdown(input);
+				if (contentMd === null) throw new DomainError('CONTENT_REQUIRED', 'Content is required');
 				await assertSlugFree(tx, input.slug);
 				const [post] = await tx
 					.insert(blog_posts)
-					.values({ ...blogValues(input), author_id: actorId, is_published: false })
+					.values({
+						...blogValues(input),
+						...blogContentValues(contentMd),
+						author_id: actorId,
+						is_published: false
+					})
 					.returning();
 				await writeAudit(tx, {
 					actorId,
@@ -330,9 +353,15 @@ export function createMarketingService(deps: CreateMarketingServiceDeps): Market
 			withTx(db, async (tx) => {
 				const before = await requirePost(tx, id);
 				await assertSlugFree(tx, input.slug, id);
+				const contentMd = givenMarkdown(input);
 				const [after] = await tx
 					.update(blog_posts)
-					.set({ ...blogValues(input), updated_at: sql`now()` })
+					.set({
+						...blogValues(input),
+						// A legacy post keeps its stored HTML until Markdown is written for it.
+						...(contentMd === null ? {} : blogContentValues(contentMd)),
+						updated_at: sql`now()`
+					})
 					.where(eq(blog_posts.id, id))
 					.returning();
 				await writeAudit(tx, {
@@ -424,6 +453,41 @@ export function createMarketingService(deps: CreateMarketingServiceDeps): Market
 					after
 				});
 				return after;
+			}),
+
+		move: (id, direction, actorId) =>
+			withTx(db, async (tx) => {
+				const item = await requireFaq(tx, id);
+				// Locks the category's rows so two moves cannot interleave.
+				const ordered = await tx
+					.select({ id: faq_items.id, orderIndex: faq_items.order_index })
+					.from(faq_items)
+					.where(
+						item.category === null
+							? isNull(faq_items.category)
+							: eq(faq_items.category, item.category)
+					)
+					.orderBy(asc(faq_items.order_index), asc(faq_items.created_at))
+					.for('update');
+				const index = ordered.findIndex((row) => row.id === id);
+				const target = direction === 'up' ? index - 1 : index + 1;
+				if (target < 0 || target >= ordered.length) return;
+				const ids = ordered.map((row) => row.id);
+				[ids[index], ids[target]] = [ids[target], ids[index]];
+				for (const [position, rowId] of ids.entries()) {
+					await tx
+						.update(faq_items)
+						.set({ order_index: position, updated_at: sql`now()` })
+						.where(eq(faq_items.id, rowId));
+				}
+				await writeAudit(tx, {
+					actorId,
+					action: 'faq_item.move',
+					entity: 'faq_item',
+					entityId: id,
+					before: { order_index: ordered[index].orderIndex },
+					after: { order_index: target, direction }
+				});
 			}),
 
 		remove: (id, actorId) =>
