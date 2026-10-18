@@ -58,6 +58,7 @@
 		"bcryptjs": "^3.0.3",
 		"better-auth": "^1.7.10",
 		"drizzle-orm": "^0.45.4",
+		"stripe": "^23.0.0",
 		"valibot": "^1.5.0"
 	}
 }
