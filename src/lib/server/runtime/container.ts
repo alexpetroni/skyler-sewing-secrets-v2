@@ -5,7 +5,12 @@ import {
 	type Auth,
 	type AuthService
 } from '#lib/server/modules/auth/index.ts';
+import { createCatalogService, type CatalogService } from '#lib/server/modules/catalog/index.ts';
 import { createContentService, type ContentService } from '#lib/server/modules/content/index.ts';
+import {
+	createEntitlementService,
+	type EntitlementService
+} from '#lib/server/modules/entitlements/index.ts';
 import { passwordResetEmail } from '#lib/server/modules/marketing/index.ts';
 import { createMediaService, type MediaService } from '#lib/server/modules/media/index.ts';
 import {
@@ -37,6 +42,8 @@ export interface Services {
 	limiter: RequestLimiter;
 	media: MediaService;
 	content: ContentService;
+	catalog: CatalogService;
+	entitlements: EntitlementService;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
 }
@@ -68,6 +75,9 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		fetch
 	});
 
+	const content = createContentService({ db, log: logger });
+	const catalog = createCatalogService({ db, content, log: logger });
+
 	return {
 		db,
 		auth,
@@ -81,7 +91,9 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		mailer,
 		limiter: createRequestLimiter({ db }),
 		media: createMediaService({ db, videoHost, log: logger }),
-		content: createContentService({ db, log: logger }),
+		content,
+		catalog,
+		entitlements: createEntitlementService({ db, log: logger }),
 		googleEnabled: config.google !== undefined
 	};
 }

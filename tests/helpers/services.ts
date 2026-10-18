@@ -10,7 +10,9 @@ import {
 	createFakeVideoHost,
 	type FakeVideoHost
 } from '../../src/lib/server/platform/fakes/video-host.ts';
+import { createCatalogService } from '../../src/lib/server/modules/catalog/index.ts';
 import { createContentService } from '../../src/lib/server/modules/content/index.ts';
+import { createEntitlementService } from '../../src/lib/server/modules/entitlements/index.ts';
 import { createMediaService } from '../../src/lib/server/modules/media/index.ts';
 import { createRequestLimiter } from '../../src/lib/server/platform/request-limits.ts';
 import type { Services } from '../../src/lib/server/runtime/container.ts';
@@ -58,6 +60,9 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		}
 	});
 
+	const content = createContentService({ db, log: logger });
+	const catalog = createCatalogService({ db, content, log: logger });
+
 	return {
 		db,
 		auth,
@@ -68,7 +73,9 @@ export function createTestServices(db: Db, overrides: TestServiceOverrides = {})
 		mailer: createFakeMailer(),
 		limiter: createRequestLimiter({ db }),
 		media: createMediaService({ db, videoHost, log: logger }),
-		content: createContentService({ db, log: logger }),
+		content,
+		catalog,
+		entitlements: createEntitlementService({ db, log: logger }),
 		googleEnabled: google !== undefined,
 		resetEmails,
 		logEntries: logger.entries
