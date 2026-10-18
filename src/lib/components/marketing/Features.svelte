@@ -48,8 +48,8 @@
 		<div class="max-w-3xl" use:reveal>
 			<span class="eyebrow-sage">The curriculum</span>
 			<h2 class="section-title mt-6 text-balance">
-				{modules.length} modules, {outline.totals.videos} videos{#if slides > 0}
-					and {slides} slide tutorials{/if}
+				{modules.length} modules, {outline.totals.videos} videos{#if slides > 0}{' '}and
+					{slides} slide tutorials{/if}
 			</h2>
 			<p class="section-description mt-6 max-w-reading">
 				Each module builds upon the last to create a seamless learning experience. You'll master the

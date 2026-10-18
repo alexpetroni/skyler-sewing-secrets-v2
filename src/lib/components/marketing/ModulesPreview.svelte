@@ -64,8 +64,8 @@
 							<h3 class="card-title mt-4">{module.title}</h3>
 
 							<p class="mt-3 flex-auto text-[13px] text-charcoal-500">
-								{module.stats.videos} videos · {module.stats.minutes} min{#if module.stats.slides > 0}
-									· {module.stats.slides} slides{/if}
+								{module.stats.videos} videos · {module.stats.minutes} min{#if module.stats.slides > 0}{' '}·
+									{module.stats.slides} slides{/if}
 							</p>
 
 							<span
