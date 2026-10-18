@@ -121,6 +121,11 @@ export const REDEMPTIONS_CSV_HEADER = [
 	'order_status'
 ] as const;
 
+/** A bulk batch as a one-column CSV for the giveaway list, quoted like every export. */
+export function codesCsv(codes: ReadonlyArray<Pick<PromoCode, 'code'>>): string {
+	return toCsv([['code'], ...codes.map((row) => [row.code])]);
+}
+
 /** Where a code stands at `now`, in the order the admin list filters by. */
 export function promoStatus(
 	code: Pick<PromoCodeSummary, 'is_active' | 'starts_at' | 'ends_at' | 'max_redemptions'> & {

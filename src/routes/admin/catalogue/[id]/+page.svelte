@@ -6,6 +6,7 @@
 	import Form from '#lib/components/admin/Form.svelte';
 	import LessonPicker from '#lib/components/admin/LessonPicker.svelte';
 	import MarkdownEditor from '#lib/components/admin/MarkdownEditor.svelte';
+	import { promoStatusBadge } from '#lib/components/admin/promo-status.ts';
 	import PriceTag from '#lib/components/shop/PriceTag.svelte';
 	import Badge from '#lib/components/ui/Badge.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -55,13 +56,6 @@
 	}
 
 	const kindLabel = { course: 'Course', bundle: 'Bundle', single: 'Single video' };
-	const statusVariant = {
-		active: 'success',
-		scheduled: 'blue',
-		expired: 'gray',
-		exhausted: 'yellow',
-		inactive: 'gray'
-	} as const;
 </script>
 
 <AdminPage title="Edit Product" description={product.title}>
@@ -289,8 +283,9 @@
 										? `${promotion.discountValue}%`
 										: formatPence(promotion.discountValue)} off
 								</span>
-								<Badge size="sm" variant={statusVariant[promotion.status]}>{promotion.status}</Badge
-								>
+								<Badge size="sm" variant={promoStatusBadge[promotion.status].variant}>
+									{promoStatusBadge[promotion.status].label}
+								</Badge>
 							</li>
 						{/each}
 					</ul>
