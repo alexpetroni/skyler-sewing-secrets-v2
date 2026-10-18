@@ -74,7 +74,8 @@ export const reviewSchema = v.object({
 		v.minValue(1, RATING_MESSAGE),
 		v.maxValue(5, RATING_MESSAGE)
 	),
-	authorTitle: v.pipe(
+	// Legacy form field name.
+	author_title: v.pipe(
 		v.optional(v.string(), ''),
 		v.trim(),
 		v.maxLength(REVIEW_TITLE_MAX, `Title must be ${REVIEW_TITLE_MAX} characters or fewer`)
