@@ -79,11 +79,48 @@ describe('migrations applied to PGlite', () => {
 		);
 	});
 
-	it('records the two legacy migrations and 0002 in the drizzle ledger', async () => {
+	it('records the two legacy migrations, 0002 and 0003 in the drizzle ledger', async () => {
 		const result = await db().execute<{ count: number }>(
 			sql`SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations`
 		);
-		expect(result.rows[0]?.count).toBe(3);
+		expect(result.rows[0]?.count).toBe(4);
+	});
+
+	it('adds the nullable Markdown columns of 0003 to blog_posts and faq_items', async () => {
+		const result = await db().execute<{
+			table_name: string;
+			column_name: string;
+			is_nullable: 'YES' | 'NO';
+			data_type: string;
+		}>(sql`
+			SELECT table_name, column_name, is_nullable, data_type FROM information_schema.columns
+			WHERE table_schema = 'public' AND (
+				(table_name = 'blog_posts' AND column_name IN ('content_md', 'content_html'))
+				OR (table_name = 'faq_items' AND column_name IN ('answer_md', 'answer_html'))
+			)
+			ORDER BY table_name, column_name
+		`);
+		expect(result.rows).toEqual([
+			{
+				table_name: 'blog_posts',
+				column_name: 'content_html',
+				is_nullable: 'YES',
+				data_type: 'text'
+			},
+			{
+				table_name: 'blog_posts',
+				column_name: 'content_md',
+				is_nullable: 'YES',
+				data_type: 'text'
+			},
+			{
+				table_name: 'faq_items',
+				column_name: 'answer_html',
+				is_nullable: 'YES',
+				data_type: 'text'
+			},
+			{ table_name: 'faq_items', column_name: 'answer_md', is_nullable: 'YES', data_type: 'text' }
+		]);
 	});
 
 	it('creates every v2 enum type', async () => {

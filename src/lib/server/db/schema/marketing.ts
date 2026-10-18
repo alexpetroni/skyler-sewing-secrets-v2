@@ -19,6 +19,9 @@ export const blog_posts = pgTable(
 		slug: text('slug').notNull().unique(),
 		excerpt: text('excerpt'),
 		content: text('content').notNull(),
+		// v2: Markdown source and its sanitised render; legacy rows hold HTML in `content`.
+		content_md: text('content_md'),
+		content_html: text('content_html'),
 		featured_image_url: text('featured_image_url'),
 		author_id: uuid('author_id').references(() => profiles.id, { onDelete: 'set null' }),
 		is_published: boolean('is_published').notNull().default(false),
@@ -68,6 +71,9 @@ export const faq_items = pgTable('faq_items', {
 	id: uuid('id').primaryKey().defaultRandom(),
 	question: text('question').notNull(),
 	answer: text('answer').notNull(),
+	// v2: Markdown source and its sanitised render; legacy rows hold the answer in `answer`.
+	answer_md: text('answer_md'),
+	answer_html: text('answer_html'),
 	category: text('category'),
 	order_index: integer('order_index').notNull().default(0),
 	is_published: boolean('is_published').notNull().default(true),
