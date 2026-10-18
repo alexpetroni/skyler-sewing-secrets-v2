@@ -28,7 +28,7 @@ export const load: PageServerLoad = async ({ locals, url, request }) => {
 	if (locals.user && locals.profile) {
 		if (isActiveAdmin(locals.profile)) {
 			redirect(303, '/admin');
-		} else if (locals.profile.is_member) {
+		} else if (locals.access.allAccess) {
 			redirect(303, DEFAULT_TARGET);
 		}
 	}

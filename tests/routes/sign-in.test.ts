@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { isActionFailure, isRedirect } from '@sveltejs/kit';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema } from '../../src/lib/server/db/index.ts';
+import { resolveAccess } from '../../src/lib/server/modules/auth/index.ts';
 import { actions, load } from '../../src/routes/(auth)/auth/sign-in/+page.server.ts';
 import { useTestDb } from '../helpers/db.ts';
 import { fakeEvent, type FakeEvent } from '../helpers/event.ts';
@@ -179,10 +180,20 @@ describe('/auth/sign-in', () => {
 		it('redirects a signed-in member to /library and an admin to /admin', async () => {
 			const cookie = await signInCookie(services, EMAIL, PASSWORD);
 			const session = await services.auth.api.getSession({ headers: new Headers({ cookie }) });
-			await db().update(profiles).set({ is_member: true }).where(eq(profiles.id, userId));
+			const profile = await services.users.getProfile(userId);
+
+			// Signed in but owning nothing: the sign-in page still renders.
+			const owner = visit({ cookie });
+			owner.locals.user = session?.user ?? null;
+			owner.locals.profile = profile;
+			owner.locals.access = resolveAccess(profile, false);
+			expect(await load(owner as unknown as LoadEvent)).toMatchObject({ redirectTo: '/library' });
+
+			// The hook found an all-access entitlement.
 			const member = visit({ cookie });
 			member.locals.user = session?.user ?? null;
-			member.locals.profile = await services.users.getProfile(userId);
+			member.locals.profile = profile;
+			member.locals.access = resolveAccess(profile, true);
 
 			expect(await expectRedirect(() => load(member as unknown as LoadEvent))).toBe('/library');
 
@@ -190,6 +201,7 @@ describe('/auth/sign-in', () => {
 			const admin = visit({ cookie });
 			admin.locals.user = session?.user ?? null;
 			admin.locals.profile = await services.users.getProfile(userId);
+			admin.locals.access = resolveAccess(admin.locals.profile, false);
 
 			expect(await expectRedirect(() => load(admin as unknown as LoadEvent))).toBe('/admin');
 		});
