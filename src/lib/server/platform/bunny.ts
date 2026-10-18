@@ -46,6 +46,8 @@ export interface UploadTicket {
 }
 
 export interface VideoHost {
+	/** The Bunny library every call targets; `media_assets` rows are keyed by it. */
+	readonly libraryId: string;
 	/** Always signed; `ttlSeconds` defaults to six hours. */
 	embedUrl(ref: BunnyRef, ttlSeconds?: number): Promise<string>;
 	listVideos(params: {
@@ -220,6 +222,8 @@ export function createBunnyVideoHost(options: BunnyVideoHostOptions): VideoHost 
 	const videoPath = (videoId: string) => `/videos/${encodeURIComponent(videoId)}`;
 
 	return {
+		libraryId,
+
 		embedUrl: (ref, ttlSeconds = DEFAULT_EMBED_TTL_SECONDS) =>
 			signedEmbedUrl(ref, embedTokenKey, nowSeconds() + ttlSeconds),
 

@@ -10,6 +10,7 @@ import {
 	createFakeVideoHost,
 	type FakeVideoHost
 } from '../../src/lib/server/platform/fakes/video-host.ts';
+import { createMediaService } from '../../src/lib/server/modules/media/index.ts';
 import { createRequestLimiter } from '../../src/lib/server/platform/request-limits.ts';
 import type { Services } from '../../src/lib/server/runtime/container.ts';
 
@@ -26,21 +27,26 @@ export interface TestServices extends Services {
 	logEntries: LogEntry[];
 }
 
+export interface TestServiceOverrides {
+	googleEnabled?: boolean;
+	/** A video host prepared by the test (e.g. with a fixed clock). */
+	videoHost?: FakeVideoHost;
+}
+
 /**
- * Real Better Auth and auth service on the given PGlite database, with an
- * in-memory mailer and logger. Files that use it mock `$app/server` so the
+ * Every service built so far on the given PGlite database: real Better Auth
+ * and domain services, with in-memory fakes for the video host, payment
+ * gateway, mailer and logger. Files that use it mock `$app/server` so the
  * sveltekitCookies plugin finds no request event (or the fake one).
  */
-export function createTestServices(
-	db: Db,
-	overrides: { googleEnabled?: boolean } = {}
-): TestServices {
+export function createTestServices(db: Db, overrides: TestServiceOverrides = {}): TestServices {
 	const resetEmails: TestServices['resetEmails'] = [];
 	const google = overrides.googleEnabled
 		? { clientId: 'google-client-id', clientSecret: 'google-client-secret' }
 		: undefined;
 
 	const logger = createFakeLogger();
+	const videoHost = overrides.videoHost ?? createFakeVideoHost();
 	const auth = createAuth({
 		db,
 		secret: 'test-secret-that-is-long-enough-for-better-auth',
@@ -57,9 +63,10 @@ export function createTestServices(
 		users: createAuthService({ db }),
 		logger,
 		payments: createFakePaymentGateway(),
-		videoHost: createFakeVideoHost(),
+		videoHost,
 		mailer: createFakeMailer(),
 		limiter: createRequestLimiter({ db }),
+		media: createMediaService({ db, videoHost, log: logger }),
 		googleEnabled: google !== undefined,
 		resetEmails,
 		logEntries: logger.entries

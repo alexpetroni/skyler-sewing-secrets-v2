@@ -76,6 +76,10 @@ describe('createBunnyVideoHost', () => {
 	it('throws when embedTokenKey is empty (fail closed)', () => {
 		expect(() => host({ embedTokenKey: '' })).toThrow(/embed token key is required/);
 	});
+
+	it('exposes the library it is bound to', () => {
+		expect(host().libraryId).toBe('123');
+	});
 });
 
 describe('embedUrl (ported from legacy bunny.test.ts and bunny.signed.test.ts)', () => {

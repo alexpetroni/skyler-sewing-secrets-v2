@@ -8,7 +8,6 @@ import {
 } from '../bunny.ts';
 
 export interface FakeVideoHost extends VideoHost {
-	readonly libraryId: string;
 	/** The in-memory library, keyed by video id. */
 	readonly videos: Map<string, BunnyVideo>;
 	/** Thumbnail times requested through `setThumbnail`, keyed by video id. */

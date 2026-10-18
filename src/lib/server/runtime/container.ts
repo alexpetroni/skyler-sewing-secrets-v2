@@ -6,6 +6,7 @@ import {
 	type AuthService
 } from '#lib/server/modules/auth/index.ts';
 import { passwordResetEmail } from '#lib/server/modules/marketing/index.ts';
+import { createMediaService, type MediaService } from '#lib/server/modules/media/index.ts';
 import {
 	createBunnyVideoHost,
 	createLogger,
@@ -33,6 +34,7 @@ export interface Services {
 	videoHost: VideoHost;
 	mailer: Mailer;
 	limiter: RequestLimiter;
+	media: MediaService;
 	/** Whether Google sign-in is configured; drives the OAuth UI. */
 	googleEnabled: boolean;
 }
@@ -56,6 +58,14 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 		}
 	});
 
+	const videoHost = createBunnyVideoHost({
+		libraryId: config.bunny.videoLibraryId,
+		apiKey: config.bunny.videoApiKey,
+		embedTokenKey: config.bunny.embedTokenKey,
+		cdnHost: config.bunny.streamCdnHost,
+		fetch
+	});
+
 	return {
 		db,
 		auth,
@@ -65,15 +75,10 @@ export async function createServices(config: RuntimeConfig): Promise<Services> {
 			secretKey: config.stripe.secretKey,
 			webhookSecret: config.stripe.webhookSecret
 		}),
-		videoHost: createBunnyVideoHost({
-			libraryId: config.bunny.videoLibraryId,
-			apiKey: config.bunny.videoApiKey,
-			embedTokenKey: config.bunny.embedTokenKey,
-			cdnHost: config.bunny.streamCdnHost,
-			fetch
-		}),
+		videoHost,
 		mailer,
 		limiter: createRequestLimiter({ db }),
+		media: createMediaService({ db, videoHost, log: logger }),
 		googleEnabled: config.google !== undefined
 	};
 }
