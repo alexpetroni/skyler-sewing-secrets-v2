@@ -56,3 +56,10 @@ export {
 	type RequestLimiter,
 	type RequestLimiterOptions
 } from './request-limits.ts';
+export {
+	createTurnstileVerifier,
+	TURNSTILE_VERIFY_ENDPOINT,
+	TurnstileError,
+	type TurnstileVerifier,
+	type TurnstileVerifierOptions
+} from './turnstile.ts';
