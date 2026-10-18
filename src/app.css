@@ -1,3 +1,544 @@
 @import 'tailwindcss';
+
+/* Self-hosted fonts: Plus Jakarta Sans (UI, variable 200–800 + italic) and Cormorant Garamond
+   (editorial display) in the weights legacy loaded from Google Fonts: 300, 400, 500, 600 and
+   300/400 italic. */
+@import '@fontsource-variable/plus-jakarta-sans/wght.css';
+@import '@fontsource-variable/plus-jakarta-sans/wght-italic.css';
+@import '@fontsource/cormorant-garamond/300.css';
+@import '@fontsource/cormorant-garamond/400.css';
+@import '@fontsource/cormorant-garamond/500.css';
+@import '@fontsource/cormorant-garamond/600.css';
+@import '@fontsource/cormorant-garamond/300-italic.css';
+@import '@fontsource/cormorant-garamond/400-italic.css';
+
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+/* ==========================================================================
+   Skyler's Sewing Secrets — Editorial Luxury design system
+   Warm parchment ground, high-contrast serif display, muted sage counterweight.
+   Depth comes from nested bezels and diffused light, never from hard borders.
+
+   Tokens ported 1:1 from legacy/tailwind.config.js (theme.extend). Durations 400/600/800/1000
+   need no token: Tailwind 4 accepts any bare number for `duration-*`.
+   ========================================================================== */
+
+@theme {
+	/* Warm saffron — drawn from the logo thread. Accent duty, not shouting. */
+	--color-brand-50: #fdf8f2;
+	--color-brand-100: #faeedd;
+	--color-brand-200: #f4dabb;
+	--color-brand-300: #ecbf8e;
+	--color-brand-400: #e19f5e;
+	--color-brand-500: #d4863c;
+	--color-brand-600: #bd6f2c;
+	--color-brand-700: #9c5824;
+	--color-brand-800: #7d4622;
+	--color-brand-900: #663b1f;
+	--color-brand-950: #371d0e;
+
+	/* Parchment ground — the calm the whole site sits on. */
+	--color-ivory-50: #fdfbf7;
+	--color-ivory-100: #faf6ee;
+	--color-ivory-200: #f4ede1;
+	--color-ivory-300: #ebe0cf;
+	--color-ivory-400: #ddceb6;
+
+	/* Espresso-charcoal — text and structure. */
+	--color-charcoal-50: #f7f6f5;
+	--color-charcoal-100: #eae7e4;
+	--color-charcoal-200: #d5d0ca;
+	--color-charcoal-300: #b8b0a7;
+	--color-charcoal-400: #948a80;
+	--color-charcoal-500: #786d63;
+	--color-charcoal-600: #61574f;
+	--color-charcoal-700: #4e463f;
+	--color-charcoal-800: #38322d;
+	--color-charcoal-900: #241f1c;
+	--color-charcoal-950: #151210;
+
+	/* Muted sage — the reassuring counterweight to the saffron. */
+	--color-sage-50: #f4f7f4;
+	--color-sage-100: #e6ede6;
+	--color-sage-200: #cedbcf;
+	--color-sage-300: #abc0ad;
+	--color-sage-400: #82a085;
+	--color-sage-500: #618364;
+	--color-sage-600: #4b694e;
+	--color-sage-700: #3d5440;
+	--color-sage-800: #334436;
+	--color-sage-900: #2b382d;
+	--color-sage-950: #151d17;
+
+	/* Champagne — hairlines and quiet emphasis. */
+	--color-gold-200: #eee0c2;
+	--color-gold-300: #ddc687;
+	--color-gold-400: #c9a962;
+	--color-gold-500: #b8954a;
+	--color-gold-600: #a07b3a;
+	--color-gold-700: #836131;
+
+	/* The variable build registers as "Plus Jakarta Sans Variable"; the static name follows. */
+	--font-sans:
+		'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+	--font-serif: 'Cormorant Garamond', ui-serif, Georgia, serif;
+
+	--radius-2xl: 1rem;
+	--radius-3xl: 1.5rem;
+	--radius-shell: 2rem;
+	--radius-core: 1.625rem;
+	--radius-shell-lg: 2.5rem;
+	--radius-core-lg: 2.125rem;
+
+	--tracking-extra-wide: 0.15em;
+	--tracking-eyebrow: 0.2em;
+
+	/* Diffused, warm, never harsh — light falling on paper. */
+	--shadow-ambient: 0 1px 2px rgba(56, 50, 45, 0.03), 0 10px 30px -14px rgba(56, 50, 45, 0.12);
+	--shadow-lift: 0 2px 4px rgba(56, 50, 45, 0.03), 0 22px 48px -20px rgba(56, 50, 45, 0.18);
+	--shadow-float: 0 4px 8px rgba(56, 50, 45, 0.03), 0 40px 80px -34px rgba(56, 50, 45, 0.26);
+	--shadow-island: 0 1px 2px rgba(56, 50, 45, 0.04), 0 16px 40px -20px rgba(56, 50, 45, 0.22);
+	--shadow-bezel: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+	--shadow-bezel-dark: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+
+	/* Also the legacy :root custom properties `--ease-fluid` / `--ease-soft`. */
+	--ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+	--ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+
+	--container-reading: 68ch;
+
+	--animate-drift-in: drift-in 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+	--animate-breathe: breathe 14s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+	--animate-marquee: marquee 42s linear infinite;
+
+	@keyframes drift-in {
+		from {
+			opacity: 0;
+			transform: translate3d(0, 2rem, 0);
+		}
+		to {
+			opacity: 1;
+			transform: translate3d(0, 0, 0);
+		}
+	}
+
+	@keyframes breathe {
+		0%,
+		100% {
+			opacity: 0.5;
+			transform: scale(1);
+		}
+		50% {
+			opacity: 0.8;
+			transform: scale(1.06);
+		}
+	}
+
+	@keyframes marquee {
+		from {
+			transform: translate3d(0, 0, 0);
+		}
+		to {
+			transform: translate3d(-50%, 0, 0);
+		}
+	}
+}
+
+@layer base {
+	:root {
+		--rule: rgba(56, 50, 45, 0.08);
+	}
+
+	/* Tailwind 3 preflight defaults that Tailwind 4 dropped; kept so legacy markup renders the
+	   same (unstyled borders were gray-200, buttons had a pointer cursor). */
+	*,
+	::after,
+	::before,
+	::backdrop,
+	::file-selector-button {
+		border-color: var(--color-gray-200, currentColor);
+	}
+
+	button:not(:disabled),
+	[role='button']:not(:disabled) {
+		cursor: pointer;
+	}
+
+	html {
+		@apply scroll-smooth;
+		-webkit-text-size-adjust: 100%;
+	}
+
+	body {
+		@apply bg-ivory-50 font-sans text-charcoal-700 antialiased;
+		font-size: 16px;
+		line-height: 1.6;
+		font-feature-settings: 'ss01', 'cv01';
+	}
+
+	/* Film grain — fixed layer so it never repaints with scroll. */
+	body::after {
+		content: '';
+		position: fixed;
+		inset: 0;
+		z-index: 30;
+		pointer-events: none;
+		opacity: 0.035;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+	}
+
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		@apply font-serif text-charcoal-900;
+		font-weight: 500;
+		line-height: 1.08;
+		letter-spacing: -0.015em;
+	}
+
+	::selection {
+		background-color: var(--color-sage-200);
+		color: var(--color-charcoal-900);
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--color-sage-500);
+		outline-offset: 3px;
+		border-radius: 2px;
+	}
+
+	/* Quiet, warm scrollbar rather than the OS default slab. */
+	* {
+		scrollbar-color: var(--color-charcoal-200) transparent;
+		scrollbar-width: thin;
+	}
+}
+
+/* --------------------------------------------------------------------------
+   Ported component and utility classes. Every class selector from legacy/src/app.css,
+   produced by `grep -oE '^\s*\.[a-zA-Z0-9_-]+' legacy/src/app.css | sort -u`:
+
+   aurora body-base body-lg btn btn-accent btn-ghost btn-lg btn-orb btn-primary btn-sage
+   btn-secondary btn-sm card card-title container-default container-narrow container-wide core
+   core-lg display divider eyebrow eyebrow-sage hairline-b input label link mask-fade-b
+   mask-fade-r meta page-title plate plate-inner prose-editorial reveal rule section section-alt
+   section-description section-header section-heading section-tight section-title select shell
+   shell-lg shell-sage subsection-heading text-balance text-pretty textarea
+
+   Tailwind 4 cannot `@apply` a plain class, so where legacy composed `@apply btn …` or
+   `@apply eyebrow …`, the shared declarations are written once on a grouped selector instead.
+   -------------------------------------------------------------------------- */
+
+@layer components {
+	/* ---------------------------------------------------------------
+	   Double-bezel (Doppelrand): an inner plate seated in an outer tray.
+	   Radii are concentric — core radius = shell radius minus the padding.
+	   --------------------------------------------------------------- */
+	.shell {
+		@apply rounded-shell bg-white/50 p-1.5 ring-1 ring-charcoal-900/[0.06] backdrop-blur-none ring-inset;
+	}
+
+	.shell-lg {
+		@apply rounded-shell-lg bg-white/50 p-2 ring-1 ring-charcoal-900/[0.06] ring-inset;
+	}
+
+	.shell-sage {
+		@apply rounded-shell bg-sage-100/60 p-1.5 ring-1 ring-sage-700/10 ring-inset;
+	}
+
+	.core {
+		@apply rounded-core bg-white shadow-bezel;
+	}
+
+	.core-lg {
+		@apply rounded-core-lg bg-white shadow-bezel;
+	}
+
+	/* The full assembly, for the common case. */
+	.plate {
+		@apply rounded-shell bg-white/50 p-1.5 shadow-ambient ring-1 ring-charcoal-900/[0.06] ring-inset;
+	}
+
+	.plate-inner {
+		@apply rounded-core bg-white p-7 shadow-bezel sm:p-8;
+	}
+
+	/* Legacy alias — pages still reach for .card. */
+	.card {
+		@apply rounded-shell bg-white p-1.5 shadow-ambient ring-1 ring-charcoal-900/[0.06] ring-inset;
+	}
+
+	/* ---------------------------------------------------------------
+	   Buttons — pills with mass. Press interpolates, never snaps.
+	   --------------------------------------------------------------- */
+	.btn,
+	.btn-primary,
+	.btn-accent,
+	.btn-sage,
+	.btn-secondary,
+	.btn-ghost {
+		@apply relative inline-flex items-center justify-center gap-2.5 rounded-full text-sm font-medium select-none;
+		@apply transition-all duration-400 ease-fluid;
+		@apply active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+		padding: 0.75rem 1.5rem;
+	}
+
+	.btn-primary {
+		@apply bg-charcoal-900 text-ivory-50 shadow-ambient;
+		@apply hover:bg-charcoal-800 hover:shadow-lift;
+	}
+
+	.btn-accent {
+		@apply bg-brand-600 text-white shadow-ambient;
+		@apply hover:bg-brand-700 hover:shadow-lift;
+	}
+
+	.btn-sage {
+		@apply bg-sage-600 text-white shadow-ambient hover:bg-sage-700 hover:shadow-lift;
+	}
+
+	.btn-secondary {
+		@apply bg-white/70 text-charcoal-800 shadow-ambient ring-1 ring-charcoal-900/[0.07] ring-inset;
+		@apply hover:bg-white hover:shadow-lift hover:ring-charcoal-900/[0.12];
+	}
+
+	.btn-ghost {
+		@apply text-charcoal-600 hover:bg-charcoal-900/[0.04] hover:text-charcoal-900;
+	}
+
+	.btn-sm {
+		@apply gap-2 text-[13px];
+		padding: 0.5rem 1.125rem;
+	}
+
+	.btn-lg {
+		@apply gap-3 text-base;
+		padding: 0.9375rem 1.75rem;
+	}
+
+	/* Button-in-button: the trailing glyph lives in its own island. */
+	.btn-orb {
+		@apply -mr-3 ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full;
+		@apply bg-white/15 transition-transform duration-400 ease-spring;
+		@apply group-hover:translate-x-1 group-hover:-translate-y-px group-hover:scale-105;
+	}
+
+	.btn-secondary .btn-orb,
+	.btn-ghost .btn-orb {
+		@apply bg-charcoal-900/[0.06];
+	}
+
+	.btn-lg .btn-orb {
+		@apply -mr-3.5 h-9 w-9;
+	}
+
+	.btn-sm .btn-orb {
+		@apply -mr-2.5 h-6 w-6;
+	}
+
+	/* ---------------------------------------------------------------
+	   Form fields — seated, not outlined.
+	   --------------------------------------------------------------- */
+	.input,
+	.textarea,
+	.select {
+		@apply block w-full rounded-2xl border-0 bg-white px-4 py-3 text-[15px] text-charcoal-900;
+		@apply shadow-[inset_0_1px_2px_rgba(56,50,45,0.05)] ring-1 ring-charcoal-900/[0.09] ring-inset;
+		@apply transition-all duration-300 ease-fluid placeholder:text-charcoal-400;
+		@apply focus:bg-white focus:ring-2 focus:ring-sage-500 focus:ring-inset;
+	}
+
+	.textarea {
+		@apply leading-relaxed;
+	}
+
+	.label {
+		@apply mb-2 block text-[13px] font-medium tracking-wide text-charcoal-600;
+	}
+
+	.link {
+		@apply font-medium text-charcoal-900 underline decoration-gold-400 decoration-1 underline-offset-4;
+		@apply transition-colors duration-300 ease-fluid hover:decoration-charcoal-900;
+	}
+
+	/* ---------------------------------------------------------------
+	   Spatial rhythm
+	   --------------------------------------------------------------- */
+	.container-narrow {
+		@apply mx-auto max-w-3xl px-5 sm:px-8;
+	}
+
+	.container-default {
+		@apply mx-auto max-w-7xl px-5 sm:px-8;
+	}
+
+	.container-wide {
+		@apply mx-auto max-w-[88rem] px-5 sm:px-8;
+	}
+
+	.section {
+		@apply py-24 sm:py-32 lg:py-40;
+	}
+
+	.section-tight {
+		@apply py-20 sm:py-24;
+	}
+
+	.section-alt {
+		@apply bg-ivory-100;
+	}
+
+	.rule {
+		@apply border-t border-charcoal-900/[0.07];
+	}
+
+	.divider {
+		@apply border-t border-charcoal-900/[0.07];
+	}
+
+	/* ---------------------------------------------------------------
+	   Typography scale
+	   --------------------------------------------------------------- */
+	.eyebrow,
+	.eyebrow-sage {
+		@apply inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 ring-1 ring-charcoal-900/[0.07] ring-inset;
+		@apply text-[10px] font-semibold tracking-eyebrow text-charcoal-500 uppercase;
+	}
+
+	.eyebrow-sage {
+		@apply bg-sage-100/70 text-sage-700 ring-sage-700/10;
+	}
+
+	.display {
+		@apply font-serif text-charcoal-900;
+		font-size: clamp(2.75rem, 7.5vw, 5.5rem);
+		font-weight: 500;
+		line-height: 0.98;
+		letter-spacing: -0.025em;
+	}
+
+	.page-title {
+		@apply font-serif text-charcoal-900;
+		font-size: clamp(2.25rem, 5vw, 3.75rem);
+		font-weight: 500;
+		line-height: 1.02;
+		letter-spacing: -0.02em;
+	}
+
+	.section-title,
+	.section-heading {
+		@apply font-serif text-charcoal-900;
+		font-size: clamp(1.875rem, 3.6vw, 3rem);
+		font-weight: 500;
+		line-height: 1.06;
+		letter-spacing: -0.02em;
+	}
+
+	.subsection-heading {
+		@apply font-serif text-[1.5rem] leading-tight font-medium text-charcoal-900 sm:text-[1.75rem];
+	}
+
+	.card-title {
+		@apply font-serif text-[1.375rem] leading-snug font-medium text-charcoal-900;
+	}
+
+	.section-header {
+		@apply mx-auto mb-16 max-w-2xl text-center sm:mb-20;
+	}
+
+	.section-description,
+	.body-lg {
+		@apply text-[17px] leading-[1.7] text-charcoal-600 sm:text-lg;
+	}
+
+	.body-base {
+		@apply text-[15px] leading-[1.7] text-charcoal-600 sm:text-base;
+	}
+
+	.meta {
+		@apply text-[13px] leading-normal text-charcoal-500;
+	}
+
+	/* Long-form article body — serif headings, generous measure, warm rules. */
+	.prose-editorial {
+		@apply prose prose-lg max-w-none text-charcoal-700;
+		@apply prose-headings:font-serif prose-headings:font-medium prose-headings:tracking-tight prose-headings:text-charcoal-900;
+		@apply prose-p:leading-[1.8] prose-p:text-charcoal-600;
+		@apply prose-a:font-medium prose-a:text-charcoal-900 prose-a:decoration-gold-400 prose-a:underline-offset-4;
+		@apply prose-strong:text-charcoal-900 prose-li:text-charcoal-600 prose-li:marker:text-charcoal-300;
+		@apply prose-blockquote:border-l-2 prose-blockquote:border-gold-400 prose-blockquote:font-serif prose-blockquote:text-charcoal-700 prose-blockquote:not-italic;
+		@apply prose-img:rounded-core prose-img:shadow-ambient prose-hr:border-charcoal-900/10;
+		@apply prose-code:text-charcoal-800 prose-pre:rounded-core prose-pre:bg-charcoal-950;
+	}
+}
+
+@layer utilities {
+	.text-balance {
+		text-wrap: balance;
+	}
+
+	.text-pretty {
+		text-wrap: pretty;
+	}
+
+	/* Scroll entry — heavy, unhurried, GPU-only. Set by the `reveal` action. */
+	.reveal {
+		opacity: 0;
+		transform: translate3d(0, 3rem, 0);
+		filter: blur(6px);
+		transition:
+			opacity 900ms var(--ease-soft),
+			transform 900ms var(--ease-soft),
+			filter 900ms var(--ease-soft);
+		transition-delay: var(--reveal-delay, 0ms);
+	}
+
+	.reveal.is-revealed {
+		opacity: 1;
+		transform: translate3d(0, 0, 0);
+		filter: blur(0);
+	}
+
+	/* Ambient light pooled behind sections — purely decorative. */
+	.aurora {
+		@apply pointer-events-none absolute -z-10 rounded-full blur-3xl;
+	}
+
+	.hairline-b {
+		box-shadow: 0 1px 0 var(--rule);
+	}
+
+	.mask-fade-r {
+		mask-image: linear-gradient(to right, black 78%, transparent 100%);
+	}
+
+	.mask-fade-b {
+		mask-image: linear-gradient(to bottom, black 72%, transparent 100%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	.reveal {
+		opacity: 1;
+		transform: none;
+		filter: none;
+		transition: none;
+	}
+
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+	}
+}
