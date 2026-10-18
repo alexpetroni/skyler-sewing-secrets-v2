@@ -4,6 +4,7 @@ import * as v from 'valibot';
 import { adminForm, mapDomainError } from '#lib/server/http/forms.ts';
 import { requireAdmin } from '#lib/server/modules/auth/index.ts';
 import {
+	anonymiseSchema,
 	emptyActionSchema,
 	grantProductSchema,
 	revokeProductSchema,
@@ -20,7 +21,8 @@ const forms = {
 	revoke: adminForm(revokeProductSchema, { id: 'revoke' }),
 	sendReset: adminForm(emptyActionSchema, { id: 'sendReset' }),
 	setAdmin: adminForm(setAdminSchema, { id: 'setAdmin' }),
-	revokeSessions: adminForm(emptyActionSchema, { id: 'revokeSessions' })
+	revokeSessions: adminForm(emptyActionSchema, { id: 'revokeSessions' }),
+	anonymise: adminForm(anonymiseSchema, { id: 'anonymise' })
 };
 
 /** The user the page is about; anything but a uuid is a 404. */
@@ -34,7 +36,7 @@ export const load: PageServerLoad = async (event) => {
 	requireAdmin(event);
 	const detail = await event.locals.services.admin.users.detail(targetId(event));
 	if (!detail) error(404, 'User not found');
-	const [suspend, unsuspend, grant, revoke, sendReset, setAdmin, revokeSessions] =
+	const [suspend, unsuspend, grant, revoke, sendReset, setAdmin, revokeSessions, anonymise] =
 		await Promise.all([
 			forms.suspend.empty(),
 			forms.unsuspend.empty(),
@@ -42,11 +44,12 @@ export const load: PageServerLoad = async (event) => {
 			forms.revoke.empty(),
 			forms.sendReset.empty(),
 			forms.setAdmin.empty(),
-			forms.revokeSessions.empty()
+			forms.revokeSessions.empty(),
+			forms.anonymise.empty()
 		]);
 	return {
 		detail,
-		forms: { suspend, unsuspend, grant, revoke, sendReset, setAdmin, revokeSessions }
+		forms: { suspend, unsuspend, grant, revoke, sendReset, setAdmin, revokeSessions, anonymise }
 	};
 };
 
@@ -151,6 +154,19 @@ export const actions: Actions = {
 			parsed.form,
 			parsed.data.isAdmin ? 'Admin access given.' : 'Admin access removed.'
 		);
+	},
+
+	anonymise: async (event) => {
+		const { user } = requireAdmin(event);
+		const userId = targetId(event);
+		const parsed = await forms.anonymise.parse(event.request);
+		if (!parsed.ok) return parsed.failure;
+		try {
+			await event.locals.services.admin.users.anonymise({ userId, actorId: user.id });
+		} catch (err) {
+			return mapDomainError(parsed.form, err);
+		}
+		return message(parsed.form, 'Account anonymised: personal data removed and access ended.');
 	},
 
 	revokeSessions: async (event) => {

@@ -328,6 +328,20 @@ export const subscriberListQuerySchema = v.object({
 });
 
 /** The phrase `ConfirmForm` asks for before maintenance mode is switched on. */
+export const ANONYMISE_PHRASE = 'delete this account';
+
+/** Admin GDPR deletion: the phrase, nothing else. */
+export const anonymiseSchema = v.object({
+	confirm: v.pipe(
+		v.optional(v.string(), ''),
+		v.trim(),
+		v.check(
+			(value) => value.toLowerCase() === ANONYMISE_PHRASE,
+			'Type the phrase exactly to confirm'
+		)
+	)
+});
+
 export const MAINTENANCE_PHRASE = 'maintenance on';
 
 export const maintenanceOnSchema = v.object({

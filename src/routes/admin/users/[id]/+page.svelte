@@ -11,7 +11,7 @@
 	import Card from '#lib/components/ui/Card.svelte';
 	import Input from '#lib/components/ui/Input.svelte';
 	import { formatPence } from '#lib/shared/money.ts';
-	import { setAdminPhrase } from '#lib/shared/schemas/admin.ts';
+	import { ANONYMISE_PHRASE, setAdminPhrase } from '#lib/shared/schemas/admin.ts';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -125,6 +125,19 @@
 						: 'They get full access to this panel, every order and every account.'}
 					hidden={{ isAdmin: String(!profile.is_admin) }}
 				/>
+
+				{#if !profile.is_admin}
+					<div class="border-t border-gray-200 pt-6">
+						<h3 class="text-sm font-semibold text-gray-900">Anonymise &amp; delete</h3>
+						<ConfirmForm
+							form={data.forms.anonymise}
+							action="?/anonymise"
+							phrase={ANONYMISE_PHRASE}
+							label="Anonymise & delete"
+							description="GDPR deletion: name, email and picture are removed, every session and sign-in method deleted, all access revoked. Orders are kept for accounting. This cannot be undone."
+						/>
+					</div>
+				{/if}
 			</div>
 		</Card>
 	</div>

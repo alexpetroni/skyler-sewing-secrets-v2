@@ -13,7 +13,9 @@ export {
 } from './two-factor.ts';
 export type { CreateAuthOptions } from './create-auth.ts';
 export {
+	anonymisedEmail,
 	createAuthService,
+	type AccountExport,
 	type AuthService,
 	type CreateCredentialUserInput,
 	type EnsureProfileInput,

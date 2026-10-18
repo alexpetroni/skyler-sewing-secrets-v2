@@ -5,7 +5,16 @@ import { DomainError } from '#lib/server/modules/errors.ts';
 import { schema } from '#lib/server/db/index.ts';
 import { createAuthService } from './service.ts';
 
-const { users, accounts, profiles, sessions, audit_log } = schema;
+const {
+	users,
+	accounts,
+	profiles,
+	sessions,
+	verifications,
+	twoFactors,
+	audit_log,
+	newsletter_subscribers
+} = schema;
 
 describe('createAuthService', () => {
 	const { db } = useTestDb();
@@ -197,6 +206,131 @@ describe('createAuthService', () => {
 			const actions = (await db().select().from(audit_log)).map((entry) => entry.action);
 			expect(actions).toEqual(['user.suspend', 'user.unsuspend']);
 		});
+	});
+
+	describe('anonymise', () => {
+		async function seedPerson() {
+			const userId = await service().createCredentialUser({
+				email: 'Gone.Person@Example.com',
+				password: 'their-password',
+				fullName: 'Gone Person'
+			});
+			await db()
+				.update(profiles)
+				.set({ avatar_url: 'https://cdn.example.com/gone.jpg', is_member: true })
+				.where(eq(profiles.id, userId));
+			await addSession(userId);
+			await db()
+				.insert(verifications)
+				.values([
+					{
+						identifier: 'reset-password:abc',
+						value: userId,
+						expiresAt: new Date(Date.now() + 60_000)
+					},
+					{
+						identifier: 'sign-in-otp-gone.person@example.com',
+						value: '123456:0',
+						expiresAt: new Date(Date.now() + 60_000)
+					},
+					{
+						identifier: 'sign-in-otp-someone.else@example.com',
+						value: '654321:0',
+						expiresAt: new Date(Date.now() + 60_000)
+					}
+				]);
+			await db().insert(twoFactors).values({ userId, secret: 'enc', backupCodes: 'enc' });
+			await db()
+				.insert(newsletter_subscribers)
+				.values([{ email: 'gone.person@example.com' }, { email: 'stays@example.com' }]);
+			return userId;
+		}
+
+		it('blanks the person, deletes their sign-in rows and newsletter row, suspends and audits as self', async () => {
+			const userId = await seedPerson();
+
+			await service().anonymise(userId, userId);
+
+			const [user] = await db().select().from(users).where(eq(users.id, userId));
+			expect(user).toMatchObject({
+				email: `deleted-${userId}@invalid.local`,
+				name: '',
+				image: null,
+				emailVerified: false,
+				twoFactorEnabled: false
+			});
+			const profile = await service().getProfile(userId);
+			expect(profile).toMatchObject({
+				email: `deleted-${userId}@invalid.local`,
+				full_name: null,
+				avatar_url: null,
+				is_member: false,
+				is_suspended: true,
+				suspended_reason: 'deleted'
+			});
+			expect(profile?.suspended_at).not.toBeNull();
+			expect(await db().select().from(accounts).where(eq(accounts.userId, userId))).toEqual([]);
+			expect(await db().select().from(sessions).where(eq(sessions.userId, userId))).toEqual([]);
+			expect(await db().select().from(twoFactors).where(eq(twoFactors.userId, userId))).toEqual([]);
+			expect((await db().select().from(verifications)).map((row) => row.identifier)).toEqual([
+				'sign-in-otp-someone.else@example.com'
+			]);
+			expect((await db().select().from(newsletter_subscribers)).map((row) => row.email)).toEqual([
+				'stays@example.com'
+			]);
+			expect(await service().hasPassword(userId)).toBe(false);
+			expect(await service().findUserIdByEmail('gone.person@example.com')).toBeNull();
+
+			const [entry] = await db().select().from(audit_log);
+			expect(entry).toMatchObject({
+				actor_id: userId,
+				action: 'user.anonymise',
+				entity: 'profile',
+				entity_id: userId,
+				before: { is_suspended: false, is_member: true },
+				after: {
+					is_suspended: true,
+					suspended_reason: 'deleted',
+					is_member: false,
+					entitlements_revoked: 0,
+					by: 'self'
+				}
+			});
+			expect(JSON.stringify(entry)).not.toMatch(/gone/i);
+		});
+
+		it('records the admin as the actor and refuses admin targets untouched', async () => {
+			const userId = await seedPerson();
+			const actorId = await createActor();
+
+			await service().anonymise(userId, actorId);
+			const [entry] = await db().select().from(audit_log);
+			expect(entry).toMatchObject({ actor_id: actorId, after: { by: 'admin' } });
+
+			const refusal = await service()
+				.anonymise(actorId, actorId)
+				.catch((err: unknown) => err);
+			expect(refusal).toBeInstanceOf(DomainError);
+			expect(refusal).toMatchObject({ code: 'USER_IS_ADMIN' });
+			expect((await service().getProfile(actorId))?.email).toBe('actor@example.com');
+			expect(await service().hasPassword(actorId)).toBe(true);
+		});
+	});
+
+	it('hasPassword and verifyPassword follow the credential account', async () => {
+		const userId = await service().createCredentialUser({
+			email: 'pw@example.com',
+			password: 'right-one'
+		});
+		expect(await service().hasPassword(userId)).toBe(true);
+		expect(await service().verifyPassword(userId, 'right-one')).toBe(true);
+		expect(await service().verifyPassword(userId, 'wrong-one')).toBe(false);
+
+		// A Google-only account has no credential row.
+		await db().delete(accounts).where(eq(accounts.userId, userId));
+		expect(await service().hasPassword(userId)).toBe(false);
+		expect(await service().verifyPassword(userId, 'right-one')).toBe(false);
+		expect(await service().exportData(crypto.randomUUID())).toBeNull();
 	});
 
 	it('trimSessions keeps the newest `keep` sessions of the user only', async () => {

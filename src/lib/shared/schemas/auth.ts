@@ -50,6 +50,15 @@ export const resetPasswordSchema = v.pipe(
 	)
 );
 
+/** What a member types to delete their account when it has no password (Google only). */
+export const DELETE_ACCOUNT_PHRASE = 'delete my account';
+
+/** Self-service deletion: the password when the account has one, otherwise the phrase. */
+export const deleteAccountSchema = v.object({
+	password: v.optional(v.string(), ''),
+	confirm: v.pipe(v.optional(v.string(), ''), v.trim())
+});
+
 /** First message per field, in the `{ field: message }` shape the forms render. */
 export function fieldErrors(issues: readonly v.BaseIssue<unknown>[]): Record<string, string> {
 	const errors: Record<string, string> = {};

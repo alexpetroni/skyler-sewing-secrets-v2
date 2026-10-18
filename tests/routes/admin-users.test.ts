@@ -81,7 +81,8 @@ describe('/admin/users', () => {
 			['revoke', { productId: seeded.flagship.id, reason: 'Gone' }],
 			['sendReset', {}],
 			['setAdmin', { isAdmin: 'true', confirm: 'make admin' }],
-			['revokeSessions', {}]
+			['revokeSessions', {}],
+			['anonymise', { confirm: 'delete this account' }]
 		];
 		for (const [action, fields] of attempts) {
 			expect(await submit(nobody.id, action, member.id, fields)).toBe('error 403');
@@ -223,6 +224,43 @@ describe('/admin/users', () => {
 		).toEqual([{ is_admin: false }, { is_admin: true }]);
 	});
 
+	it('anonymises a member behind the typed phrase, with the admin as audit actor', async () => {
+		const { member } = seeded.users;
+		const wrong = await submit(adminId, 'anonymise', member.id, { confirm: 'yes' });
+		expect(failed(wrong).form.errors.confirm).toEqual(['Type the phrase exactly to confirm']);
+		expect((await profileOf(member.id)).email).toBe(member.email);
+
+		const done = (await submit(adminId, 'anonymise', member.id, {
+			confirm: 'Delete this account'
+		})) as FormResult;
+		expect(done.form.message).toBe('Account anonymised: personal data removed and access ended.');
+		expect(await profileOf(member.id)).toMatchObject({
+			email: `deleted-${member.id}@invalid.local`,
+			full_name: null,
+			is_member: false,
+			is_suspended: true,
+			suspended_reason: 'deleted'
+		});
+		const active = (
+			await db().select().from(entitlements).where(eq(entitlements.user_id, member.id))
+		).filter((row) => row.revoked_at === null);
+		expect(active).toEqual([]);
+		const [entry] = await auditFor('user.anonymise');
+		expect(entry).toMatchObject({
+			actor_id: adminId,
+			entity_id: member.id,
+			after: { by: 'admin' }
+		});
+
+		// Admins cannot be anonymised from here.
+		const refused = await submit(adminId, 'anonymise', adminId, { confirm: 'delete this account' });
+		expect(failed(refused).status).toBe(400);
+		expect(failed(refused).form.errors._errors).toEqual([
+			'An admin account cannot be deleted; remove admin first'
+		]);
+		expect((await profileOf(adminId)).email).toBe('owner@example.com');
+	});
+
 	it('sends a password reset and signs the user out everywhere', async () => {
 		const { member } = seeded.users;
 		const reset = (await submit(adminId, 'sendReset', member.id)) as FormResult;
@@ -244,7 +282,16 @@ describe('/admin/users', () => {
 		expect(page.detail.profile.email).toBe(bundleOwner.email);
 		expect(page.detail.entitlements.map((row) => row.productId)).toEqual([seeded.bundle.id]);
 		expect(Object.keys(page.forms).sort()).toEqual(
-			['grant', 'revoke', 'revokeSessions', 'sendReset', 'setAdmin', 'suspend', 'unsuspend'].sort()
+			[
+				'anonymise',
+				'grant',
+				'revoke',
+				'revokeSessions',
+				'sendReset',
+				'setAdmin',
+				'suspend',
+				'unsuspend'
+			].sort()
 		);
 		expect(page.forms.suspend).toMatchObject({ id: 'suspend', valid: false, errors: {} });
 

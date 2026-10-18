@@ -114,6 +114,8 @@ export interface AdminService {
 		/** Better Auth mints the token and sends the email; the request is audited. */
 		sendReset(input: { userId: string; actorId: string }): Promise<void>;
 		revokeSessions(input: { userId: string; actorId: string }): Promise<number>;
+		/** GDPR deletion on the member's behalf (`AuthService.anonymise`); refuses admins. */
+		anonymise(input: { userId: string; actorId: string }): Promise<void>;
 	};
 	orders: {
 		list(params: OrderListParams): Promise<queries.Paged<queries.OrderRow>>;
@@ -312,6 +314,12 @@ export function createAdminService({
 					entityId: userId
 				});
 				log.info('admin sent password reset', { userId, actorId });
+			},
+
+			async anonymise({ userId, actorId }) {
+				await requireProfile(userId);
+				await userService.anonymise(userId, actorId);
+				log.info('admin anonymised account', { userId, actorId });
 			},
 
 			async revokeSessions({ userId, actorId }) {

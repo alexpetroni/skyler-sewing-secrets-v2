@@ -1,9 +1,22 @@
 import bcrypt from 'bcryptjs';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { schema, withTx, type Db, type Tx } from '#lib/server/db/index.ts';
 import { DomainError } from '#lib/server/modules/errors.ts';
 
-const { users, accounts, profiles, sessions, audit_log } = schema;
+const {
+	users,
+	accounts,
+	profiles,
+	sessions,
+	verifications,
+	twoFactors,
+	audit_log,
+	orders,
+	order_items,
+	entitlements,
+	user_progress,
+	newsletter_subscribers
+} = schema;
 
 export type Profile = typeof profiles.$inferSelect;
 
@@ -17,6 +30,52 @@ export interface EnsureProfileInput {
 	userId: string;
 	email: string;
 	fullName?: string | null;
+}
+
+/** Everything the site holds about a person, for the GDPR export. */
+export interface AccountExport {
+	exportedAt: string;
+	profile: {
+		id: string;
+		email: string;
+		fullName: string | null;
+		avatarUrl: string | null;
+		isMember: boolean;
+		memberSince: string | null;
+		createdAt: string;
+	};
+	orders: Array<{
+		id: string;
+		status: string;
+		currency: string;
+		subtotal: number;
+		discountTotal: number;
+		total: number;
+		createdAt: string;
+		paidAt: string | null;
+		items: Array<{
+			productId: string;
+			productTitle: string;
+			listPrice: number;
+			unitPrice: number;
+			discountAmount: number;
+			refundedAmount: number;
+		}>;
+	}>;
+	entitlements: Array<{
+		id: string;
+		productId: string;
+		source: string;
+		grantedAt: string;
+		revokedAt: string | null;
+	}>;
+	progress: Array<{
+		lessonId: string;
+		completed: boolean;
+		completedAt: string | null;
+		lastPositionSeconds: number;
+		updatedAt: string;
+	}>;
 }
 
 export interface AuthService {
@@ -42,6 +101,26 @@ export interface AuthService {
 	revokeAllSessions(userId: string): Promise<void>;
 	/** Keeps the `keep` newest sessions of the user and deletes the rest. */
 	trimSessions(userId: string, keep: number): Promise<number>;
+	/** Whether a credential (password) account exists; Google-only accounts have none. */
+	hasPassword(userId: string): Promise<boolean>;
+	/** bcrypt check against the credential account; false when there is none. */
+	verifyPassword(userId: string, password: string): Promise<boolean>;
+	/** The profile, orders with items, entitlements and lesson progress, for download. */
+	exportData(userId: string): Promise<AccountExport | null>;
+	/**
+	 * GDPR deletion. Personal data is blanked (`deleted-<id>@invalid.local`,
+	 * no name, no image), accounts, sessions, verifications and TOTP rows are
+	 * deleted, the profile is suspended with reason `deleted`, every
+	 * entitlement is revoked and the newsletter row for the address removed.
+	 * Orders and their items stay for accounting. Refuses admins
+	 * (`USER_IS_ADMIN`). One audit row, `actor` = the user or the admin.
+	 */
+	anonymise(userId: string, actorId: string): Promise<void>;
+}
+
+/** The address an anonymised account is left with. */
+export function anonymisedEmail(userId: string): string {
+	return `deleted-${userId}@invalid.local`;
 }
 
 /** bcrypt cost used by Supabase Auth, whose hashes were migrated unchanged. */
@@ -57,6 +136,15 @@ export function createAuthService({ db }: { db: Db }): AuthService {
 		const profile = await loadProfile(executor, userId);
 		if (!profile) throw new Error(`Profile ${userId} not found`);
 		return profile;
+	}
+
+	async function credentialHash(userId: string): Promise<string | null> {
+		const [row] = await db
+			.select({ password: accounts.password })
+			.from(accounts)
+			.where(and(eq(accounts.userId, userId), eq(accounts.providerId, 'credential')))
+			.limit(1);
+		return row?.password ?? null;
 	}
 
 	async function writeAudit(
@@ -236,6 +324,163 @@ export function createAuthService({ db }: { db: Db }): AuthService {
 
 		async revokeAllSessions(userId) {
 			await db.delete(sessions).where(eq(sessions.userId, userId));
+		},
+
+		async hasPassword(userId) {
+			return (await credentialHash(userId)) !== null;
+		},
+
+		async verifyPassword(userId, password) {
+			const hash = await credentialHash(userId);
+			return hash !== null && (await bcrypt.compare(password, hash));
+		},
+
+		async exportData(userId) {
+			const profile = await loadProfile(db, userId);
+			if (!profile) return null;
+			const [orderRows, itemRows, entitlementRows, progressRows] = await Promise.all([
+				db.select().from(orders).where(eq(orders.user_id, userId)).orderBy(orders.created_at),
+				db
+					.select({ item: order_items })
+					.from(order_items)
+					.innerJoin(orders, eq(order_items.order_id, orders.id))
+					.where(eq(orders.user_id, userId)),
+				db
+					.select()
+					.from(entitlements)
+					.where(eq(entitlements.user_id, userId))
+					.orderBy(entitlements.granted_at),
+				db
+					.select()
+					.from(user_progress)
+					.where(eq(user_progress.user_id, userId))
+					.orderBy(user_progress.updated_at)
+			]);
+			return {
+				exportedAt: new Date().toISOString(),
+				profile: {
+					id: profile.id,
+					email: profile.email,
+					fullName: profile.full_name,
+					avatarUrl: profile.avatar_url,
+					isMember: profile.is_member,
+					memberSince: profile.member_since,
+					createdAt: profile.created_at
+				},
+				orders: orderRows.map((order) => ({
+					id: order.id,
+					status: order.status,
+					currency: order.currency,
+					subtotal: order.subtotal,
+					discountTotal: order.discount_total,
+					total: order.total,
+					createdAt: order.created_at,
+					paidAt: order.paid_at,
+					items: itemRows
+						.filter(({ item }) => item.order_id === order.id)
+						.map(({ item }) => ({
+							productId: item.product_id,
+							productTitle: item.product_title,
+							listPrice: item.list_price,
+							unitPrice: item.unit_price,
+							discountAmount: item.discount_amount,
+							refundedAmount: item.refunded_amount
+						}))
+				})),
+				entitlements: entitlementRows.map((row) => ({
+					id: row.id,
+					productId: row.product_id,
+					source: row.source,
+					grantedAt: row.granted_at,
+					revokedAt: row.revoked_at
+				})),
+				progress: progressRows.map((row) => ({
+					lessonId: row.lesson_id,
+					completed: row.completed,
+					completedAt: row.completed_at,
+					lastPositionSeconds: row.last_position_seconds,
+					updatedAt: row.updated_at
+				}))
+			};
+		},
+
+		anonymise(userId, actorId) {
+			return withTx(db, async (tx) => {
+				const before = await requireProfile(tx, userId);
+				if (before.is_admin) {
+					throw new DomainError(
+						'USER_IS_ADMIN',
+						'An admin account cannot be deleted; remove admin first'
+					);
+				}
+				const [account] = await tx
+					.select({ email: users.email })
+					.from(users)
+					.where(eq(users.id, userId))
+					.limit(1);
+				const email = (account?.email ?? before.email).toLowerCase();
+				const deletedEmail = anonymisedEmail(userId);
+
+				await tx
+					.update(users)
+					.set({
+						email: deletedEmail,
+						name: '',
+						image: null,
+						emailVerified: false,
+						twoFactorEnabled: false,
+						updatedAt: new Date()
+					})
+					.where(eq(users.id, userId));
+				await tx.delete(accounts).where(eq(accounts.userId, userId));
+				await tx.delete(sessions).where(eq(sessions.userId, userId));
+				await tx.delete(twoFactors).where(eq(twoFactors.userId, userId));
+				// Better Auth keys reset and two-factor tokens by user id and
+				// email codes by `<type>-otp-<email>`.
+				await tx
+					.delete(verifications)
+					.where(
+						or(
+							eq(verifications.value, userId),
+							sql`right(${verifications.identifier}, ${email.length}) = ${email}`
+						)
+					);
+				await tx
+					.update(profiles)
+					.set({
+						email: deletedEmail,
+						full_name: null,
+						avatar_url: null,
+						is_member: false,
+						is_suspended: true,
+						suspended_reason: 'deleted',
+						suspended_at: sql`now()`,
+						updated_at: sql`now()`
+					})
+					.where(eq(profiles.id, userId));
+				const revoked = await tx
+					.update(entitlements)
+					.set({ revoked_at: sql`now()`, revoke_reason: 'account deleted' })
+					.where(and(eq(entitlements.user_id, userId), isNull(entitlements.revoked_at)))
+					.returning({ id: entitlements.id });
+				await tx
+					.delete(newsletter_subscribers)
+					.where(sql`lower(${newsletter_subscribers.email}) = ${email}`);
+				// No personal data in the audit row.
+				await writeAudit(tx, {
+					actorId,
+					action: 'user.anonymise',
+					userId,
+					before: { is_suspended: before.is_suspended, is_member: before.is_member },
+					after: {
+						is_suspended: true,
+						suspended_reason: 'deleted',
+						is_member: false,
+						entitlements_revoked: revoked.length,
+						by: actorId === userId ? 'self' : 'admin'
+					}
+				});
+			});
 		},
 
 		async trimSessions(userId, keep) {

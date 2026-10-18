@@ -145,6 +145,19 @@
 					</p>
 					<button type="submit" class="btn-secondary mt-4">Sign out everywhere</button>
 				</form>
+
+				<div class="mt-8 border-t border-charcoal-900/[0.07] pt-8">
+					<h3 class="text-[10px] tracking-eyebrow text-charcoal-400 uppercase">Your data</h3>
+					<p class="mt-3 text-[14px] leading-relaxed text-charcoal-500">
+						Download everything we hold about you, or delete your account and personal details.
+					</p>
+					<div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-[14px]">
+						<a href="/profile/export" class="link" download>Download my data</a>
+						<a href="/profile/delete" class="link text-red-700 hover:text-red-900"
+							>Delete my account</a
+						>
+					</div>
+				</div>
 			</div>
 		</div>
 
