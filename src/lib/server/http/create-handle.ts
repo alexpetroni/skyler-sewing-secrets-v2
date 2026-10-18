@@ -10,14 +10,11 @@ import {
 } from '#lib/server/modules/auth/index.ts';
 import { createLogger, type Logger } from '#lib/server/platform/logger.ts';
 import type { Services } from '#lib/server/runtime/container.ts';
-import { createMaintenanceReader, type MaintenanceReader } from './maintenance.ts';
 import { withSecurityHeaders } from './security-headers.ts';
 
 export interface CreateHandleOptions {
 	getServices: () => Promise<Services>;
 	isMaintenanceExempt: (pathname: string) => boolean;
-	/** How long the maintenance flag is cached per instance; 30 seconds by default. */
-	maintenanceCacheMs?: number;
 }
 
 const MAINTENANCE_MESSAGE = 'The site is under maintenance. Please try again shortly.';
@@ -41,8 +38,7 @@ function withMaintenanceHeaders(response: Response): Response {
  * gates throw, leaves through `withSecurityHeaders`.
  */
 export function createHandle(options: CreateHandleOptions): Handle {
-	const { getServices, isMaintenanceExempt, maintenanceCacheMs } = options;
-	let maintenance: MaintenanceReader | undefined;
+	const { getServices, isMaintenanceExempt } = options;
 
 	// (e) Headers on every response. A redirect()/error() thrown by a gate would
 	// be turned into a response by SvelteKit without passing through here, so
@@ -103,15 +99,12 @@ export function createHandle(options: CreateHandleOptions): Handle {
 	// site; everyone else gets the maintenance page with a 503 at `/`, is
 	// redirected to `/` from every other page, and gets a 503 for writes. The
 	// `&&` short-circuits, so site_settings is never read for exempt paths or
-	// active admins.
+	// active admins. The flag is cached (and fails open) in the settings service.
 	const maintenanceGate: Handle = async ({ event, resolve }) => {
-		const { db, logger } = event.locals.services;
-		maintenance ??= createMaintenanceReader({ db, logger, ttlMs: maintenanceCacheMs });
-
 		event.locals.maintenanceMode =
 			!isMaintenanceExempt(event.url.pathname) &&
 			!event.locals.access.isAdmin &&
-			(await maintenance.isOn());
+			(await event.locals.services.marketing.settings.isMaintenanceMode());
 
 		if (event.locals.maintenanceMode && event.url.pathname !== '/') {
 			if (isReadMethod(event.request)) redirect(303, '/');

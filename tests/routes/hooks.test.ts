@@ -345,18 +345,15 @@ describe('createHandle', () => {
 			expect(admin.status).toBe(200);
 		});
 
-		it('caches the flag for the configured window', async () => {
-			const cachedHandle = createHandle({
-				getServices: async () => services,
-				isMaintenanceExempt,
-				maintenanceCacheMs: 60_000
-			});
-			handle = cachedHandle;
+		it('caches the flag in the services for the maintenance window', async () => {
 			expect((await call({ path: '/' })).status).toBe(200);
 
 			await enableMaintenance();
+			// Same services instance: the cached `false` is still served.
 			expect((await call({ path: '/' })).status).toBe(200);
 
+			// A fresh instance (another serverless process) reads the new value.
+			services = createTestServices(db());
 			handle = createHandle({ getServices: async () => services, isMaintenanceExempt });
 			expect((await call({ path: '/' })).status).toBe(503);
 		});
