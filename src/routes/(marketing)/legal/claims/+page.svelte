@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Seo from '#lib/components/Seo.svelte';
 	/* eslint-disable svelte/no-navigation-without-resolve -- links are root-relative with no base path */
+	import Seo from '#lib/components/Seo.svelte';
 	const lastUpdated = 'January 1, 2026';
 </script>
 

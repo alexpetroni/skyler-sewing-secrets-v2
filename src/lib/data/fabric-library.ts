@@ -51,12 +51,7 @@ export const fabrics: Fabric[] = [
 		description:
 			'Silk satin has been a symbol of luxury and glamour since the days of the Silk Road. Its rich sheen and fluid drape make it a favorite for high-end fashion, but working with it requires precision.',
 		tips: 'To maintain accuracy while cutting, placing the silk on paper helps prevent shifting. Staystitching on lightweight paper further ensures the fabric retains its shape. For sewing, Microtex or Sharps needles in sizes 60/8 or 70/10 are ideal, as they glide through the delicate fibers without causing damage. Always use sharp scissors and avoid damaged needles to preserve the fabric integrity. For flawless finish, French seams and pin hems are the perfect choices, giving your garments a couture-quality touch with elegant drape and movement - worthy of the red carpet!',
-		recommended_techniques: [
-			'French seam',
-			'Pin hem',
-			'Staystitching on paper',
-			'Microtex needles'
-		]
+		recommended_techniques: ['French seam', 'Pin hem', 'Staystitching on paper', 'Microtex needles']
 	},
 	{
 		name: 'Organza',
@@ -78,12 +73,7 @@ export const fabrics: Fabric[] = [
 		description:
 			'Velvet can be very challenging to work with due to its pile and luxurious texture. This sumptuous fabric requires special handling to achieve professional results.',
 		tips: 'Cut each panel on a single layer, ensuring all pieces follow the same grain - especially the bias cuts - to keep the pile aligned in one direction. When sewing two layers together, pin diagonally to prevent shifting while sewing, and stitch in the direction of the pile. Steam rather than press, placing a towel underneath to avoid crushing the pile. Instead of finishing seam allowances, I prefer to line the velvet for a cleaner, more refined look.',
-		recommended_techniques: [
-			'Single layer cutting',
-			'Diagonal pinning',
-			'Steam pressing',
-			'Lining'
-		]
+		recommended_techniques: ['Single layer cutting', 'Diagonal pinning', 'Steam pressing', 'Lining']
 	},
 	{
 		name: 'Sequins',
@@ -150,12 +140,7 @@ export const fabrics: Fabric[] = [
 		description:
 			"Let's get one thing straight - tulle is NOT a mesh! This sheer, magical fabric is my go-to for adding structure without weight.",
 		tips: "Tulle is perfect for creating illusion necklines, deep V cutouts, or providing invisible support in gowns. It's the secret weapon for reinforcing fabric under zippers, binding delicate lace, or even acting as an interlining for organza and other sheer textiles. When working with tulle, cut it carefully and staystitch it on paper to keep it from shifting and stretching - you don't want snags ruining your masterpiece! Unless you're working with silk tulle, keep the iron at bay, or risk irreversible meltdown (literally).",
-		recommended_techniques: [
-			'Staystitching on paper',
-			'No heat pressing',
-			'Binding',
-			'Interlining'
-		]
+		recommended_techniques: ['Staystitching on paper', 'No heat pressing', 'Binding', 'Interlining']
 	},
 	{
 		name: 'Chiffon',

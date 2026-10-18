@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Seo from '#lib/components/Seo.svelte';
 	import { enhance } from '$app/forms';
 	import PageHeader from '#lib/components/layout/PageHeader.svelte';
 	import { Alert } from '#lib/components/ui/index.ts';
@@ -7,10 +8,11 @@
 	let { data, form }: PageProps = $props();
 </script>
 
-<svelte:head>
-	<title>Unsubscribe - Skyler's Sewing Secrets</title>
-	<meta name="robots" content="noindex" />
-</svelte:head>
+<Seo
+	title="Unsubscribe - Skyler's Sewing Secrets"
+	description="Unsubscribe from the Skyler's Sewing Secrets newsletter."
+	noindex
+/>
 
 <PageHeader
 	eyebrow="Couture Notes"

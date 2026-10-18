@@ -1,5 +1,6 @@
 <script lang="ts">
 	/* eslint-disable svelte/no-navigation-without-resolve -- links are root-relative with no base path */
+	import Seo from '#lib/components/Seo.svelte';
 	import PageHeader from '#lib/components/layout/PageHeader.svelte';
 	import { Alert } from '#lib/components/ui/index.ts';
 	import type { PageProps } from './$types';
@@ -7,10 +8,11 @@
 	let { data }: PageProps = $props();
 </script>
 
-<svelte:head>
-	<title>Confirm Subscription - Skyler's Sewing Secrets</title>
-	<meta name="robots" content="noindex" />
-</svelte:head>
+<Seo
+	title="Confirm Subscription - Skyler's Sewing Secrets"
+	description="Confirm your subscription to the Skyler's Sewing Secrets newsletter."
+	noindex
+/>
 
 <PageHeader eyebrow="Couture Notes" title="Confirm your subscription" compact />
 

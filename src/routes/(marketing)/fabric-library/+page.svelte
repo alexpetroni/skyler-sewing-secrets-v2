@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Seo from '#lib/components/Seo.svelte';
 	/* eslint-disable svelte/no-navigation-without-resolve -- links are root-relative with no base path */
+	import Seo from '#lib/components/Seo.svelte';
 	import OptimizedImage from '#lib/components/ui/OptimizedImage.svelte';
 	import PageHeader from '#lib/components/layout/PageHeader.svelte';
 	import { reveal } from '#lib/actions/reveal.ts';
