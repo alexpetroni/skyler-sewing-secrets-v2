@@ -408,15 +408,19 @@ export function createAdminService({
 					order.stripe_checkout_session_id
 				);
 				// `fulfilOrder` owns its transaction (it locks the order row and sends
-				// the emails after commit), so the outcome is audited right after it.
-				const result = await fulfilment.fulfilOrder(id, session);
-				await writeAudit(db, {
-					actorId,
-					action: 'order.rerun_fulfilment',
-					entity: 'order',
-					entityId: id,
-					before: { status: order.status },
-					after: 'alreadyFulfilled' in result ? { already_fulfilled: true } : { status: 'paid' }
+				// the emails after commit); the audit row is written inside it so the
+				// rerun and its audit commit together (rule 9).
+				const result = await fulfilment.fulfilOrder(id, session, {
+					inTransaction: (tx, outcome) =>
+						writeAudit(tx, {
+							actorId,
+							action: 'order.rerun_fulfilment',
+							entity: 'order',
+							entityId: id,
+							before: { status: order.status },
+							after:
+								'alreadyFulfilled' in outcome ? { already_fulfilled: true } : { status: 'paid' }
+						})
 				});
 				log.info('admin re-ran fulfilment', { orderId: id, actorId });
 				return result;

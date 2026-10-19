@@ -6,7 +6,7 @@ import type { PromoInput } from '#lib/shared/schemas/commerce.ts';
 import { seedCatalog, type SeededCatalog } from '../../../../../tests/helpers/fixtures.ts';
 import { useTestDb } from '../../../../../tests/helpers/db.ts';
 import { DomainError } from '../errors.ts';
-import { proRata } from './fulfilment.ts';
+import { IN_FLIGHT_WINDOW_MS, proRata, type FulfilOrderResult } from './fulfilment.ts';
 import type { OrderWithItems } from './orders.ts';
 
 const { orders, order_items, entitlements, profiles, users, webhook_events, promo_redemptions } =
@@ -196,6 +196,45 @@ describe('createFulfilmentService', () => {
 				firstFulfilment: false
 			});
 			expect(subjects()).toEqual([CONFIRMATION_SUBJECT, WELCOME_SUBJECT, CONFIRMATION_SUBJECT]);
+		});
+
+		it('runs the inTransaction hook inside the grant transaction, so a failing hook rolls the grant back', async () => {
+			const order = await checkoutOrder([seeded.bundle.id]);
+			const session = seeded.services.payments.markPaid(order.sessionId);
+			const seen: FulfilOrderResult[] = [];
+
+			await expect(
+				service().fulfilOrder(order.id, session, {
+					inTransaction: async (_tx, result) => {
+						seen.push(result);
+						throw new Error('audit failed');
+					}
+				})
+			).rejects.toThrow('audit failed');
+			expect(seen).toEqual([{ fulfilled: true, firstFulfilment: true }]);
+			expect((await orderRow(order.id)).status).toBe('pending');
+			expect(await activeEntitlements(buyer().id)).toHaveLength(0);
+			expect(subjects()).toEqual([]);
+
+			// The hook sees the result the call returns, for the already-fulfilled rerun too.
+			const audited: FulfilOrderResult[] = [];
+			const record = {
+				inTransaction: async (_tx: unknown, result: FulfilOrderResult) => {
+					audited.push(result);
+				}
+			};
+			expect(await service().fulfilOrder(order.id, session, record)).toEqual({
+				fulfilled: true,
+				firstFulfilment: true
+			});
+			expect(await service().fulfilOrder(order.id, session, record)).toEqual({
+				alreadyFulfilled: true
+			});
+			expect(audited).toEqual([
+				{ fulfilled: true, firstFulfilment: true },
+				{ alreadyFulfilled: true }
+			]);
+			expect(await activeEntitlements(buyer().id)).toHaveLength(1);
 		});
 
 		it('logs a failed email instead of throwing, after the grant is committed', async () => {
@@ -482,6 +521,39 @@ describe('createFulfilmentService', () => {
 			expect(row.error).toBeNull();
 			expect(row.processed_at).not.toBeNull();
 			expect((await orderRow(order.id)).status).toBe('paid');
+		});
+
+		it('retries an event whose first delivery died after the insert, but not one still in flight', async () => {
+			const order = await checkoutOrder([seeded.bundle.id]);
+			seeded.services.payments.markPaid(order.sessionId);
+			const event = await gatewayEvent(order.sessionId, 'checkout.session.completed');
+
+			// A delivery that was killed between inserting the row and marking it:
+			// neither processed_at nor error. Moments later it may still be running.
+			await db().insert(webhook_events).values({
+				provider: 'stripe',
+				event_id: event.id,
+				type: event.type,
+				reference: order.sessionId
+			});
+			expect(await service().handleGatewayEvent(event)).toEqual({ duplicate: true });
+			expect((await orderRow(order.id)).status).toBe('pending');
+
+			// Past the in-flight window nothing can still be handling it: Stripe's retry fulfils.
+			await db()
+				.update(webhook_events)
+				.set({ received_at: new Date(Date.now() - IN_FLIGHT_WINDOW_MS - 1000).toISOString() })
+				.where(eq(webhook_events.event_id, event.id));
+			expect(await service().handleGatewayEvent(event)).toEqual({
+				duplicate: false,
+				processed: true
+			});
+			expect((await orderRow(order.id)).status).toBe('paid');
+			expect(await activeEntitlements(buyer().id)).toHaveLength(1);
+			const rows = await eventRows();
+			expect(rows).toHaveLength(1);
+			expect(rows[0].processed_at).not.toBeNull();
+			expect(rows[0].error).toBeNull();
 		});
 
 		it('stores an unhandled Stripe type as processed without side effects', async () => {

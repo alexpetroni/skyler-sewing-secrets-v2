@@ -21,8 +21,24 @@ const { orders, order_items, profiles, users, webhook_events } = schema;
 
 const PROVIDER = 'stripe';
 
+/**
+ * How long a `webhook_events` row with neither `processed_at` nor `error` is
+ * taken to be in another invocation's hands. Longer than any webhook function
+ * may run (its `maxDuration`), so a row older than this was abandoned.
+ */
+export const IN_FLIGHT_WINDOW_MS = 2 * 60 * 1000;
+
 export type FulfilOrderResult =
 	{ alreadyFulfilled: true } | { fulfilled: true; firstFulfilment: boolean };
+
+export interface FulfilOrderOptions {
+	/**
+	 * Runs inside the fulfilment transaction, after the grant and before the
+	 * commit, with the result the call will return. The admin service writes
+	 * its `audit_log` row here so the rerun and its audit commit together.
+	 */
+	inTransaction?: (tx: Tx, result: FulfilOrderResult) => Promise<void>;
+}
 
 export type RevocationKind = 'refund' | 'partial_refund' | 'dispute';
 
@@ -52,7 +68,11 @@ export interface FulfilmentService {
 	 * is unpaid or does not match the order's reference, total or currency.
 	 * Emails go out after commit; their failures are logged, never thrown.
 	 */
-	fulfilOrder(orderId: string, session: CheckoutSessionView): Promise<FulfilOrderResult>;
+	fulfilOrder(
+		orderId: string,
+		session: CheckoutSessionView,
+		options?: FulfilOrderOptions
+	): Promise<FulfilOrderResult>;
 	/**
 	 * Revokes every entitlement the order granted and records the refund or
 	 * dispute. Business rule: a partial refund still removes all access; the
@@ -165,7 +185,8 @@ export function createFulfilmentService({
 
 	async function fulfilOrder(
 		orderId: string,
-		session: CheckoutSessionView
+		session: CheckoutSessionView,
+		options: FulfilOrderOptions = {}
 	): Promise<FulfilOrderResult> {
 		type Granted = {
 			order: Order & { items: OrderItem[] };
@@ -174,7 +195,10 @@ export function createFulfilmentService({
 		};
 		const outcome = await withTx(db, async (tx): Promise<Granted | { alreadyFulfilled: true }> => {
 			const order = await lockOrder(tx, orderId);
-			if (FULFILLED_STATUSES.has(order.status)) return { alreadyFulfilled: true };
+			if (FULFILLED_STATUSES.has(order.status)) {
+				await options.inTransaction?.(tx, { alreadyFulfilled: true });
+				return { alreadyFulfilled: true };
+			}
 			checkSession(order, session);
 
 			const [earlier] = await tx
@@ -213,6 +237,7 @@ export function createFulfilmentService({
 			if (to && session.customerEmail?.toLowerCase() === to.email.toLowerCase()) {
 				await auth.markEmailVerified(order.user_id, tx);
 			}
+			await options.inTransaction?.(tx, { fulfilled: true, firstFulfilment });
 			return { order, to, firstFulfilment };
 		});
 		if ('alreadyFulfilled' in outcome) return outcome;
@@ -372,22 +397,35 @@ export function createFulfilmentService({
 
 		let rowId = inserted?.id;
 		if (!rowId) {
-			// Seen before. A row that is processed, or still being processed, makes
-			// this delivery a no-op; one that failed is the provider's retry.
+			// Seen before. A processed row makes this delivery a no-op, as does one
+			// received moments ago that another invocation is still handling. One
+			// that failed is the provider's retry; so is one that was never marked
+			// processed or failed (the process died after the insert), once it is
+			// older than any handler could still be running.
 			const [existing] = await db
 				.select({
 					id: webhook_events.id,
+					receivedAt: webhook_events.received_at,
 					processedAt: webhook_events.processed_at,
 					error: webhook_events.error
 				})
 				.from(webhook_events)
 				.where(and(eq(webhook_events.provider, PROVIDER), eq(webhook_events.event_id, event.id)))
 				.limit(1);
-			if (!existing || existing.processedAt !== null || existing.error === null) {
+			const inFlight =
+				existing?.error === null &&
+				now().getTime() - Date.parse(existing.receivedAt) < IN_FLIGHT_WINDOW_MS;
+			if (!existing || existing.processedAt !== null || inFlight) {
 				log.info('webhook event duplicate', { eventId: event.id, type });
 				return { duplicate: true };
 			}
 			rowId = existing.id;
+			if (existing.error === null) {
+				log.warn('webhook event abandoned by an earlier delivery, retrying', {
+					eventId: event.id,
+					type
+				});
+			}
 			await db.update(webhook_events).set({ error: null }).where(eq(webhook_events.id, rowId));
 		}
 
