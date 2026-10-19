@@ -7,6 +7,15 @@ import { defineConfig, devices } from '@playwright/test';
 const localEnv = 'tests/e2e/.env';
 if (existsSync(localEnv)) process.loadEnvFile(localEnv);
 
+// The specs pay with test cards and create throwaway accounts: a Preview
+// deployment only, never the beta (Production) or live domain.
+const baseURL = process.env.E2E_BASE_URL;
+if (baseURL && /(^|\.)skylersewingsecrets\.com$/i.test(new URL(baseURL).hostname)) {
+	throw new Error(
+		`E2E_BASE_URL=${baseURL} is a production host; point the suite at a Vercel Preview deployment`
+	);
+}
+
 export default defineConfig({
 	testDir: 'tests/e2e',
 	testMatch: '**/*.spec.ts',
@@ -19,7 +28,7 @@ export default defineConfig({
 	expect: { timeout: 15_000 },
 	reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
 	use: {
-		baseURL: process.env.E2E_BASE_URL,
+		baseURL,
 		trace: 'on-first-retry',
 		screenshot: 'only-on-failure',
 		locale: 'en-GB',
