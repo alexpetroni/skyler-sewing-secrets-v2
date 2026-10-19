@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { schema } from '../../src/lib/server/db/index.ts';
@@ -45,7 +46,7 @@ describe('/download/[resourceId]', () => {
 		);
 	});
 
-	it('signs files on the storage pull zone for five minutes, leaving other URLs alone', async () => {
+	it('signs files on the storage pull zone for five minutes', async () => {
 		const seeded = await seedCatalog(db());
 		const { storage } = seeded.services;
 		const stored = await storage.put(
@@ -67,15 +68,15 @@ describe('/download/[resourceId]', () => {
 		const expires = Number(url.searchParams.get('expires'));
 		expect(expires).toBeGreaterThanOrEqual(before + 300);
 		expect(expires).toBeLessThanOrEqual(before + 301);
-		expect(url.searchParams.get('token')).toBe(
-			new URL(
-				await storage.signedUrl(
-					'uploads/2026/10/pattern.pdf',
-					expires - Math.floor(Date.now() / 1000)
-				)
-			).searchParams.get('token')
-		);
-		// Not on the zone: redirected as stored (the first test above).
+		// Bunny's token, recomputed here rather than asked of the fake:
+		// base64url(sha256(key + "/" + path + expires)).
+		const expectedToken = createHash('sha256')
+			.update(`${storage.tokenKey}/uploads/2026/10/pattern.pdf${expires}`)
+			.digest('base64')
+			.replace(/\+/g, '-')
+			.replace(/\//g, '_')
+			.replace(/=+$/, '');
+		expect(url.searchParams.get('token')).toBe(expectedToken);
 		expect(storage.files.has('uploads/2026/10/pattern.pdf')).toBe(true);
 	});
 
