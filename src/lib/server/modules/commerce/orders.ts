@@ -261,10 +261,26 @@ export function createOrderService({
 				expiresAt: new Date(order.expires_at ?? now().getTime() + ORDER_TTL_MS),
 				metadata: { order_id: order.id }
 			});
-			await db
-				.update(orders)
-				.set({ stripe_checkout_session_id: session.id })
-				.where(eq(orders.id, order.id));
+			try {
+				await db
+					.update(orders)
+					.set({ stripe_checkout_session_id: session.id })
+					.where(eq(orders.id, order.id));
+			} catch (err) {
+				// The session exists at Stripe but no order points at it: the caller
+				// will expire the order, so close the session too, or a buyer who kept
+				// the hosted page open could pay for an order that is already expired.
+				try {
+					await gateway.expireCheckoutSession(session.id);
+				} catch (expireErr) {
+					log.error('orphaned checkout session could not be expired', {
+						orderId: order.id,
+						sessionId: session.id,
+						error: expireErr instanceof Error ? expireErr.message : String(expireErr)
+					});
+				}
+				throw err;
+			}
 			log.info('checkout session created', { orderId: order.id, sessionId: session.id });
 			return session.url;
 		},

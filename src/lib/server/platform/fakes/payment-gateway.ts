@@ -128,6 +128,14 @@ export function createFakePaymentGateway(): FakePaymentGateway {
 			return normaliseSession(find(id).session);
 		},
 
+		async expireCheckoutSession(id) {
+			const stored = find(id);
+			if (stored.session.status !== 'open') {
+				throw new Error(`fake Stripe: checkout session ${id} is ${stored.session.status}`);
+			}
+			stored.session = { ...stored.session, status: 'expired', url: null };
+		},
+
 		async constructEvent(rawBody) {
 			const parsed: unknown = JSON.parse(rawBody);
 			if (!isEventEnvelope(parsed)) throw new Error('fake Stripe: body is not an event');

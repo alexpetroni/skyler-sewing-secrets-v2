@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { schema } from '#lib/server/db/index.ts';
+import { schema, type Db } from '#lib/server/db/index.ts';
 import type { PromoInput } from '#lib/shared/schemas/commerce.ts';
 import { seedCatalog, type SeededCatalog } from '../../../../../tests/helpers/fixtures.ts';
 import { useTestDb } from '../../../../../tests/helpers/db.ts';
@@ -37,10 +37,10 @@ describe('createOrderService', () => {
 	let clock: Date;
 
 	/** The seeded services' order service, on a clock the test controls. */
-	function service(promoOverride: Partial<PromoService> = {}) {
+	function service(promoOverride: Partial<PromoService> = {}, database: Db = db()) {
 		const { commerce, catalog, payments, logger } = seeded.services;
 		return createOrderService({
-			db: db(),
+			db: database,
 			cart: commerce.cart,
 			promo: { ...commerce.promo, ...promoOverride },
 			catalog,
@@ -48,6 +48,21 @@ describe('createOrderService', () => {
 			log: logger,
 			siteUrl: TEST_SITE_URL,
 			now: () => clock
+		});
+	}
+
+	/** `db` whose `update()` throws: the connection lost right after Stripe answered. */
+	function dbFailingOnUpdate(): Db {
+		return new Proxy(db(), {
+			get(target, prop) {
+				if (prop === 'update') {
+					return () => {
+						throw new Error('connection lost');
+					};
+				}
+				const value: unknown = Reflect.get(target, prop);
+				return typeof value === 'function' ? value.bind(target) : value;
+			}
 		});
 	}
 
@@ -226,6 +241,22 @@ describe('createOrderService', () => {
 			expect(stored.input.lineItems).toEqual([
 				{ name: 'standalone-video', unitAmount: 900, quantity: 1 }
 			]);
+		});
+
+		it('expires the Stripe session when its id cannot be stored, so the abandoned order cannot be paid', async () => {
+			const buyer = seeded.users.nobody;
+			const order = await pendingOrder(buyer.id, cart([seeded.single.id]));
+
+			await expect(
+				service({}, dbFailingOnUpdate()).startCheckout(order.id, { customerEmail: buyer.email })
+			).rejects.toThrow('connection lost');
+
+			const { payments, logEntries } = seeded.services;
+			expect(payments.sessions.size).toBe(1);
+			const [stored] = [...payments.sessions.values()];
+			expect(stored.session).toMatchObject({ status: 'expired', url: null });
+			expect((await service().getById(order.id))?.stripe_checkout_session_id).toBeNull();
+			expect(logEntries.filter((entry) => entry.level === 'error')).toEqual([]);
 		});
 
 		it('refuses an order that is not pending and has no session', async () => {

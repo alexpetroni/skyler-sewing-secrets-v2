@@ -55,6 +55,7 @@ function stubClient(event?: StripeEventLike) {
 			options: Stripe.RequestOptions;
 		}>,
 		retrieve: [] as string[],
+		expire: [] as string[],
 		refunds: [] as Stripe.RefundCreateParams[],
 		webhooks: [] as Array<{ payload: string; header: string; secret: string }>
 	};
@@ -68,6 +69,10 @@ function stubClient(event?: StripeEventLike) {
 				retrieve: async (id) => {
 					calls.retrieve.push(id);
 					return sessionFixture;
+				},
+				expire: async (id) => {
+					calls.expire.push(id);
+					return { ...sessionFixture, status: 'expired', url: null };
 				}
 			}
 		},
@@ -345,5 +350,25 @@ describe('createFakePaymentGateway', () => {
 		expect(fake.refunds).toEqual([
 			{ id: refund.id, paymentIntentId: 'pi_fake_1', amountPence: 500 }
 		]);
+	});
+});
+
+describe('expireCheckoutSession', () => {
+	it('asks Stripe to expire the session by id', async () => {
+		const { client, calls } = stubClient();
+		await createStripeGateway(gatewayOptions, client).expireCheckoutSession('cs_test_123');
+
+		expect(calls.expire).toEqual(['cs_test_123']);
+	});
+
+	it('the fake closes an open session and, like Stripe, refuses one that is not open', async () => {
+		const fake = createFakePaymentGateway();
+		const { id } = await fake.createCheckoutSession(input());
+
+		await fake.expireCheckoutSession(id);
+
+		expect(await fake.retrieveCheckoutSession(id)).toMatchObject({ status: 'expired', url: null });
+		await expect(fake.expireCheckoutSession(id)).rejects.toThrow(/is expired/);
+		await expect(fake.expireCheckoutSession('cs_missing')).rejects.toThrow(/no checkout session/);
 	});
 });

@@ -83,6 +83,11 @@ export type GatewayEvent =
 export interface PaymentGateway {
 	createCheckoutSession(input: CheckoutSessionInput): Promise<{ id: string; url: string }>;
 	retrieveCheckoutSession(id: string): Promise<CheckoutSessionView>;
+	/**
+	 * Closes an open session so its hosted page can no longer take a payment.
+	 * Rejects (as Stripe does) when the session is already complete or expired.
+	 */
+	expireCheckoutSession(id: string): Promise<void>;
 	/** Throws when the signature does not verify or the body is not an event. */
 	constructEvent(rawBody: string, signature: string): Promise<GatewayEvent>;
 	createRefund(paymentIntentId: string, amountPence?: number): Promise<{ id: string }>;
@@ -255,6 +260,7 @@ export interface StripeClient {
 				options: Stripe.RequestOptions
 			): Promise<StripeSessionLike>;
 			retrieve(id: string): Promise<StripeSessionLike>;
+			expire(id: string): Promise<StripeSessionLike>;
 		};
 	};
 	refunds: {
@@ -286,6 +292,10 @@ export function createStripeGateway(
 
 		async retrieveCheckoutSession(id) {
 			return normaliseSession(await client.checkout.sessions.retrieve(id));
+		},
+
+		async expireCheckoutSession(id) {
+			await client.checkout.sessions.expire(id);
 		},
 
 		async constructEvent(rawBody, signature) {
