@@ -102,6 +102,11 @@ export const variables = defineEnvVars({
 		schema: optional,
 		description: 'Sentry DSN for error reporting; reporting is disabled when absent'
 	},
+	PUBLIC_SENTRY_DSN: {
+		public: true,
+		schema: optional,
+		description: 'Sentry DSN for browser error reporting; client reporting is off when absent'
+	},
 	PUBLIC_TURNSTILE_SITE_KEY: {
 		public: true,
 		schema: optional,

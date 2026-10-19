@@ -94,3 +94,11 @@ export function getRuntimeConfig(): RuntimeConfig {
 		revalidateBypassToken: blankToUndefined(privateEnv.REVALIDATE_BYPASS_TOKEN)
 	};
 }
+
+/**
+ * The Sentry DSN alone, for `hooks.server.ts`, which initialises Sentry at
+ * module load: `getRuntimeConfig` would throw there while building.
+ */
+export function getSentryDsn(): string | undefined {
+	return blankToUndefined(privateEnv.SENTRY_DSN);
+}
