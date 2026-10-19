@@ -208,8 +208,9 @@ export async function seedDev(db: Db, log: Logger): Promise<SeedDevResult> {
 		productInput({ kind: 'single', slug: 'invisible-zips', title: 'Invisible zips', price: 1200 }),
 		[invisibleZips]
 	);
-	// The bundle holds a lesson the French-seams single does not: the E2E
-	// locked-lesson spec relies on it.
+	// The bundle holds a course lesson no single sells, so the bundle is the
+	// cheapest unlock for it: the E2E locked-lesson spec (E2E_BUNDLE_LESSON_PATH)
+	// relies on that; the lesson page links only the cheapest product and the course.
 	await product(
 		productInput({
 			kind: 'bundle',

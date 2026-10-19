@@ -22,8 +22,12 @@ function envOr(name: string, fallback: string): string {
 export const catalogue = {
 	singleSlug: () => envOr('E2E_SINGLE_SLUG', 'perfect-french-seams'),
 	bundleSlug: () => envOr('E2E_BUNDLE_SLUG', 'finishing-touches'),
-	/** A lesson in the bundle that the single does not contain. */
-	bundleLessonPath: () => envOr('E2E_BUNDLE_LESSON_PATH', '/videos/invisible-zips')
+	/**
+	 * A lesson the bundle is the cheapest offer for: in the bundle, not sold as a
+	 * single. The lesson page links only the cheapest product and the course.
+	 */
+	bundleLessonPath: () =>
+		envOr('E2E_BUNDLE_LESSON_PATH', '/modules/getting-started/your-first-seam')
 };
 
 /**
