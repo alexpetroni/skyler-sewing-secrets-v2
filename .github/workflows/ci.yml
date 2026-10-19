@@ -26,3 +26,45 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm test
+
+  # Browser suite against the deployed preview. Off unless the repository
+  # variable E2E_ENABLED is 'true' (GitHub does not allow `secrets` in `if`),
+  # so pushes without the E2E secrets only run the gate.
+  e2e:
+    needs: gate
+    if: ${{ vars.E2E_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+      E2E_MEMBER_EMAIL: ${{ secrets.E2E_MEMBER_EMAIL }}
+      E2E_MEMBER_PASSWORD: ${{ secrets.E2E_MEMBER_PASSWORD }}
+      E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+      E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+      E2E_ADMIN_TOTP_SECRET: ${{ secrets.E2E_ADMIN_TOTP_SECRET }}
+      E2E_ADMIN_BUNDLE_LESSONS: ${{ secrets.E2E_ADMIN_BUNDLE_LESSONS }}
+      E2E_BUYER_EMAIL_PREFIX: ${{ secrets.E2E_BUYER_EMAIL_PREFIX }}
+      E2E_SINGLE_SLUG: ${{ secrets.E2E_SINGLE_SLUG }}
+      E2E_BUNDLE_SLUG: ${{ secrets.E2E_BUNDLE_SLUG }}
+      E2E_BUNDLE_LESSON_PATH: ${{ secrets.E2E_BUNDLE_LESSON_PATH }}
+      E2E_PROMO_CODE: ${{ secrets.E2E_PROMO_CODE }}
+      # The Stripe CLI is not installed on the runner: refund-revokes.spec.ts
+      # skips here and runs where a human has the CLI (docs/runbooks/launch.md).
+      E2E_STRIPE_CLI: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
