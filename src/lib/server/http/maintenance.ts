@@ -8,6 +8,7 @@ export const MAINTENANCE_EXEMPT_PREFIXES = [
 	'/api/auth/', // Better Auth endpoints live here
 	'/api/stripe/', // legacy Stripe webhook path, still accepted
 	'/api/webhooks/', // Stripe and Bunny webhooks must be accepted
+	'/api/jobs/', // Vercel cron (CRON_SECRET-protected): orders must keep expiring, media re-syncing
 	'/api/health', // the health check must answer
 	'/checkout/success', // buyers returning from Stripe must be provisioned
 	'/checkout/cancel' // Stripe's cancel_url: a buyer backing out must not land on the maintenance page

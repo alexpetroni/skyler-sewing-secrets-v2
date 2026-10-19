@@ -453,13 +453,19 @@ describe('createHandle', () => {
 			expectSecurityHeaders(post);
 		});
 
-		it('exempts the webhook, auth and admin paths', async () => {
+		it('exempts the webhook, cron, auth and admin paths', async () => {
 			await enableMaintenance();
 
 			const webhook = await call({ method: 'POST', path: '/api/webhooks/stripe' });
 			expect(webhook.status).toBe(200);
 			expect(webhook.resolved).toBe(true);
 			expect(webhook.event.locals.maintenanceMode).toBe(false);
+
+			// Vercel cron: orders must keep expiring and media re-syncing during maintenance.
+			const job = await call({ path: '/api/jobs/expire-orders' });
+			expect(job.status).toBe(200);
+			expect(job.resolved).toBe(true);
+			expect(job.event.locals.maintenanceMode).toBe(false);
 
 			const signIn = await call({ path: '/auth/sign-in' });
 			expect(signIn.status).toBe(200);
