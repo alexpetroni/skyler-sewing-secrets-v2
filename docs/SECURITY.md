@@ -137,9 +137,13 @@ Nothing in the repository can switch these on; verify them before real buyers ar
 - **Bunny Stream** (video library): *Embed view token authentication* on, with the key in
   `BUNNY_EMBED_TOKEN_KEY` (playback fails closed without it); *Allowed referrers* set to the
   site's hosts; *MP4 fallback* off; *Direct play* off.
-- **Bunny pull zone** (images and resources, `PUBLIC_BUNNY_CDN_URL`): *Token authentication* on
-  with the key in `BUNNY_CDN_TOKEN_KEY`, otherwise download links are unsigned; *Referrer
-  allow-list* with the site's hosts; hotlink protection on.
+- **Bunny pull zone** (`PUBLIC_BUNNY_CDN_URL`): *Token authentication* must stay **off**. The
+  setting is zone-wide, and this one zone also serves product covers, blog images and admin
+  uploads as plain `<img>` URLs, so turning it on breaks every public image on the site. Set
+  `BUNNY_CDN_TOKEN_KEY` anyway so `/download/[id]` signs its links, but the signature is not
+  enforced until lesson resources move to a pull zone of their own (its own env var and storage
+  path), which does not exist yet. Until then the zone's protection is the *Referrer
+  allow-list* with the site's hosts and hotlink protection on.
 - **Bunny Storage**: the zone password in `BUNNY_STORAGE_API_KEY` is write-capable; keep it
   server-side only (it is never sent to the browser).
 - **Stripe**: webhook endpoint secret in `STRIPE_WEBHOOK_SECRET`; events listed in
