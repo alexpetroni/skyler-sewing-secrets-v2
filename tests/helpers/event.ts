@@ -85,7 +85,7 @@ export function fakeEvent(options: FakeEventOptions = {}): FakeEvent {
 		cookies,
 		locals: {
 			// What the hook binds: the services' logger plus the request id.
-			...(options.locals?.services && {
+			...(options.locals?.services?.logger && {
 				log: options.locals.services.logger.child({ requestId: options.locals.requestId })
 			}),
 			...options.locals
