@@ -40,21 +40,22 @@ export const actions: Actions = {
 			return fail(400, { error: WRONG_PHRASE });
 		}
 
-		// Clear this browser's cookie while the session still exists; the
-		// anonymisation deletes every session row afterwards.
-		try {
-			await auth.api.signOut({ headers: event.request.headers });
-		} catch (err) {
-			logger.warn('sign-out before account deletion failed', {
-				requestId: event.locals.requestId,
-				error: err instanceof Error ? err.message : String(err)
-			});
-		}
+		// A refusal (an admin account) must leave the member signed in, so the
+		// anonymisation runs first; it deletes every session row, and the
+		// sign-out afterwards only clears this browser's cookie.
 		try {
 			await users.anonymise(user.id, user.id);
 		} catch (err) {
 			if (!isDomainError(err)) throw err;
 			return fail(400, { error: err.message });
+		}
+		try {
+			await auth.api.signOut({ headers: event.request.headers });
+		} catch (err) {
+			logger.warn('sign-out after account deletion failed', {
+				requestId: event.locals.requestId,
+				error: err instanceof Error ? err.message : String(err)
+			});
 		}
 		redirect(303, '/profile/delete?done=1');
 	}

@@ -1,4 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { APIError } from 'better-auth/api';
 import * as v from 'valibot';
 import { readForm } from '#lib/server/http/forms.ts';
 import { cartViewer } from '#lib/server/http/shop.ts';
@@ -190,7 +191,11 @@ export const actions: Actions = {
 			});
 			userId = result.user.id;
 		} catch (err) {
-			if (isDomainError(err)) throw err;
+			// Better Auth refuses with an APIError (wrong, expired or spent code);
+			// a DomainError is a service refusal with its own message; anything
+			// else is a bug.
+			if (isDomainError(err)) return fail(400, { claim, errors: { code: err.message } });
+			if (!(err instanceof APIError)) throw err;
 			services.logger.info('checkout claim refused', { requestId: event.locals.requestId });
 			return fail(400, { claim, errors: { code: CLAIM_FAILED } });
 		}
