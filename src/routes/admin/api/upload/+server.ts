@@ -2,6 +2,9 @@ import { domainErrorResponse } from '#lib/server/http/api.ts';
 import { requireAdmin } from '#lib/server/modules/auth/index.ts';
 import type { RequestHandler } from './$types';
 
+/** Vercel function limit (seconds). */
+export const config = { maxDuration: 30 };
+
 /**
  * Admin file upload (images, PDFs) to Bunny Storage: one multipart `file`
  * part, at most 25 MB, stored under `uploads/<yyyy>/<mm>/<uuid>.<ext>`.

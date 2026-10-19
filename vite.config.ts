@@ -34,6 +34,9 @@ export default defineConfig(({ mode }) => {
 					runes: ({ filename }) =>
 						filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 				},
+				// TODO(human): set `regions` here to the Vercel region nearest the Neon
+				// project (for example `regions: ['lhr1']`) so function-to-database latency
+				// stays low.
 				adapter: adapter({ runtime: 'nodejs24.x' }),
 				csrf: { trustedOrigins: [] },
 				// Nonce-based CSP (security audit M2). SvelteKit adds the nonce to

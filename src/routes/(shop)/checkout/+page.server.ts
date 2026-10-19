@@ -96,8 +96,7 @@ export const actions: Actions = {
 				if (await services.users.findUserIdByEmail(email)) {
 					return fail(400, { ...echo, errors: { email: ALREADY_REGISTERED } });
 				}
-				services.logger.error('checkout account creation failed', {
-					requestId: locals.requestId,
+				locals.log.error('checkout account creation failed', {
 					error: err instanceof Error ? err.message : String(err)
 				});
 				return fail(500, { ...echo, error: ACCOUNT_FAILED });
@@ -109,8 +108,7 @@ export const actions: Actions = {
 					headers: request.headers
 				});
 			} catch (err) {
-				services.logger.error('checkout sign-in failed', {
-					requestId: locals.requestId,
+				locals.log.error('checkout sign-in failed', {
 					userId,
 					error: err instanceof Error ? err.message : String(err)
 				});
@@ -139,8 +137,7 @@ export const actions: Actions = {
 		try {
 			url = await orders.startCheckout(orderId, { customerEmail: email });
 		} catch (err) {
-			services.logger.error('checkout session creation failed', {
-				requestId: locals.requestId,
+			locals.log.error('checkout session creation failed', {
 				orderId,
 				error: err instanceof Error ? err.message : String(err)
 			});
@@ -196,7 +193,7 @@ export const actions: Actions = {
 			// else is a bug.
 			if (isDomainError(err)) return fail(400, { claim, errors: { code: err.message } });
 			if (!(err instanceof APIError)) throw err;
-			services.logger.info('checkout claim refused', { requestId: event.locals.requestId });
+			event.locals.log.info('checkout claim refused');
 			return fail(400, { claim, errors: { code: CLAIM_FAILED } });
 		}
 		await services.users.trimSessions(userId, 5);

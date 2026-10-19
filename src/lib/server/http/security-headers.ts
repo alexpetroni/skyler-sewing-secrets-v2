@@ -1,5 +1,6 @@
 /**
- * Baseline security headers on every response. Headers are only set when
+ * Standard headers on every response: `X-Request-Id` plus the baseline
+ * security headers. Headers are only set when
  * absent so a route can still override one deliberately. The Content Security
  * Policy is SvelteKit's (nonce mode, `csp` in vite.config.ts) and passes
  * through untouched; `X-Frame-Options: DENY` is kept alongside its
@@ -7,12 +8,13 @@
  * Permissions-Policy leaves autoplay, fullscreen and picture-in-picture alone
  * because the lesson player's iframe uses them.
  */
-export function withSecurityHeaders(response: Response, url: URL): Response {
+export function withStandardHeaders(response: Response, url: URL, requestId: string): Response {
 	const headers = response.headers;
 	const setIfAbsent = (name: string, value: string) => {
 		if (!headers.has(name)) headers.set(name, value);
 	};
 
+	headers.set('X-Request-Id', requestId);
 	setIfAbsent('X-Content-Type-Options', 'nosniff');
 	setIfAbsent('Referrer-Policy', 'strict-origin-when-cross-origin');
 	setIfAbsent('X-Frame-Options', 'DENY');

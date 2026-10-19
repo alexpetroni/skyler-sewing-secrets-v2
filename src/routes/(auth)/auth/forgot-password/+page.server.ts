@@ -31,8 +31,7 @@ export const actions: Actions = {
 				body: { email, redirectTo: '/auth/reset-password' }
 			});
 		} catch (err) {
-			locals.services.logger.warn('requestPasswordReset failed', {
-				requestId: locals.requestId,
+			locals.log.warn('requestPasswordReset failed', {
 				error: err instanceof Error ? err.message : String(err)
 			});
 			return fail(400, { email, error: 'Failed to send reset email. Please try again.' });

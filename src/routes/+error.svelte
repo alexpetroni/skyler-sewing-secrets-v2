@@ -36,6 +36,10 @@
 			{/if}
 		</p>
 
+		{#if page.error?.errorId}
+			<p class="mt-4 text-xs text-charcoal-200">Reference: {page.error.errorId}</p>
+		{/if}
+
 		<div class="mt-10 flex flex-wrap justify-center gap-4">
 			<a href="/" class="btn-primary group">
 				Back to home

@@ -28,7 +28,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
 	default: async (event) => {
 		const { user } = requireUser(event, '/profile/delete');
-		const { users, auth, logger } = event.locals.services;
+		const { users, auth } = event.locals.services;
 		const parsed = v.safeParse(deleteAccountSchema, await readForm(event.request));
 		if (!parsed.success) return fail(400, { error: WRONG_PHRASE });
 
@@ -52,8 +52,7 @@ export const actions: Actions = {
 		try {
 			await auth.api.signOut({ headers: event.request.headers });
 		} catch (err) {
-			logger.warn('sign-out after account deletion failed', {
-				requestId: event.locals.requestId,
+			event.locals.log.warn('sign-out after account deletion failed', {
 				error: err instanceof Error ? err.message : String(err)
 			});
 		}

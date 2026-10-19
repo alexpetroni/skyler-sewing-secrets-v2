@@ -17,13 +17,13 @@ export const load: PageServerLoad = async ({ url, locals, cookies }) => {
 	const sessionId = url.searchParams.get('session_id');
 	if (!sessionId) redirect(303, '/cart');
 
-	const { payments, commerce, logger } = locals.services;
+	const { payments, commerce } = locals.services;
+	const { log } = locals;
 	let session: CheckoutSessionView;
 	try {
 		session = await payments.retrieveCheckoutSession(sessionId);
 	} catch (err) {
-		logger.warn('checkout session lookup failed', {
-			requestId: locals.requestId,
+		log.warn('checkout session lookup failed', {
 			error: err instanceof Error ? err.message : String(err)
 		});
 		redirect(303, '/cart');
@@ -46,8 +46,7 @@ export const load: PageServerLoad = async ({ url, locals, cookies }) => {
 			await commerce.fulfilment.fulfilOrder(order.id, session);
 			current = (await commerce.orders.getById(order.id)) ?? order;
 		} catch (err) {
-			logger.error('fulfilment from success page failed', {
-				requestId: locals.requestId,
+			log.error('fulfilment from success page failed', {
 				orderId: order.id,
 				error: err instanceof Error ? err.message : String(err)
 			});

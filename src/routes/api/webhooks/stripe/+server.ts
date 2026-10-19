@@ -11,8 +11,8 @@ export const config = { maxDuration: 60 };
  * event ids and types are logged.
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
-	const { payments, commerce, logger } = locals.services;
-	const log = logger.child({ requestId: locals.requestId });
+	const { payments, commerce } = locals.services;
+	const log = locals.log;
 
 	const rawBody = await request.text();
 	const signature = request.headers.get('stripe-signature') ?? '';

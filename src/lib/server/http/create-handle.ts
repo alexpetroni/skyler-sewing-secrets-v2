@@ -10,7 +10,7 @@ import {
 } from '#lib/server/modules/auth/index.ts';
 import { createLogger, type Logger } from '#lib/server/platform/logger.ts';
 import type { Services } from '#lib/server/runtime/container.ts';
-import { withSecurityHeaders } from './security-headers.ts';
+import { withStandardHeaders } from './security-headers.ts';
 
 export interface CreateHandleOptions {
 	getServices: () => Promise<Services>;
@@ -44,7 +44,7 @@ function withMaintenanceHeaders(response: Response): Response {
 
 /**
  * The request pipeline. Every response, including the redirects and errors the
- * gates throw, leaves through `withSecurityHeaders`.
+ * gates throw, leaves through `withStandardHeaders`.
  */
 export function createHandle(options: CreateHandleOptions): Handle {
 	const { getServices, isMaintenanceExempt } = options;
@@ -53,19 +53,21 @@ export function createHandle(options: CreateHandleOptions): Handle {
 	// be turned into a response by SvelteKit without passing through here, so
 	// the throws are built into responses in this outermost handler.
 	const securityHeaders: Handle = async ({ event, resolve }) => {
+		event.locals.requestId = crypto.randomUUID();
 		try {
-			return withSecurityHeaders(await resolve(event), event.url);
+			return withStandardHeaders(await resolve(event), event.url, event.locals.requestId);
 		} catch (e) {
 			if (isRedirect(e)) {
-				return withSecurityHeaders(
+				return withStandardHeaders(
 					new Response(null, { status: e.status, headers: { location: e.location } }),
-					event.url
+					event.url,
+					event.locals.requestId
 				);
 			}
 			if (isHttpError(e)) {
 				const response = Response.json({ message: e.body.message }, { status: e.status });
 				if (e.status === 503) withMaintenanceHeaders(response);
-				return withSecurityHeaders(response, event.url);
+				return withStandardHeaders(response, event.url, event.locals.requestId);
 			}
 			throw e;
 		}
@@ -73,7 +75,8 @@ export function createHandle(options: CreateHandleOptions): Handle {
 
 	// (b) Session + profile + all-access flag → locals; a missing profile is self-healed.
 	const resolveSession: Handle = async ({ event, resolve }) => {
-		const { auth, users, entitlements, logger } = event.locals.services;
+		const { auth, users, entitlements } = event.locals.services;
+		const logger = event.locals.log;
 		const sessionData = await auth.api.getSession({ headers: event.request.headers });
 		event.locals.user = sessionData?.user ?? null;
 
@@ -88,7 +91,6 @@ export function createHandle(options: CreateHandleOptions): Handle {
 				} catch (err) {
 					logger.error('failed to self-heal missing profile', {
 						userId: id,
-						requestId: event.locals.requestId,
 						error: describeError(err)
 					});
 				}
@@ -158,13 +160,13 @@ export function createHandle(options: CreateHandleOptions): Handle {
 		event.locals.profile = null;
 		event.locals.access = NO_ACCESS;
 		event.locals.maintenanceMode = false;
-		event.locals.requestId = crypto.randomUUID();
 
 		// No page needs auth or the database at prerender time, and the
 		// services need runtime env vars: skip them entirely during the build.
 		if (building) return resolve(event);
 
 		event.locals.services = await getServices();
+		event.locals.log = event.locals.services.logger.child({ requestId: event.locals.requestId });
 
 		// Better Auth endpoints never read locals: hand the request straight to
 		// its handler without the session and profile round trips.
@@ -191,7 +193,9 @@ export function createHandleError(options: {
 }): HandleServerError {
 	return async (input) => {
 		const { kind, event } = input;
-		const errorId = crypto.randomUUID();
+		// The request id doubles as the error id, so a user's error page, the
+		// response header, the log lines and Sentry all quote the same value.
+		const errorId = event.locals.requestId ?? crypto.randomUUID();
 		const logger: Logger = await options
 			.getServices()
 			.then((services) => services.logger)
@@ -202,7 +206,7 @@ export function createHandleError(options: {
 			kind,
 			method: event.request.method,
 			pathname: event.url.pathname,
-			requestId: event.locals.requestId
+			requestId: errorId
 		};
 		if (kind === 'unknown') {
 			logger.error('unhandled request error', { ...fields, error: describeError(input.error) });

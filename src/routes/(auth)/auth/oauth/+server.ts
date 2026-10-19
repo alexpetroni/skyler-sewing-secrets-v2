@@ -25,8 +25,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		});
 		authUrl = result.url ?? undefined;
 	} catch (err) {
-		locals.services.logger.warn('signInSocial failed', {
-			requestId: locals.requestId,
+		locals.log.warn('signInSocial failed', {
 			error: err instanceof Error ? err.message : String(err)
 		});
 		redirect(303, FAILED);

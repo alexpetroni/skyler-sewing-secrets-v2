@@ -2,6 +2,9 @@ import { domainErrorResponse, isDomainError, readJson } from '#lib/server/http/a
 import { bunnyWebhookSchema } from '#lib/shared/schemas/media.ts';
 import type { RequestHandler } from './$types';
 
+/** Vercel function limit (seconds). */
+export const config = { maxDuration: 60 };
+
 /**
  * Bunny Stream webhook. The body is unsigned, so it is only a hint: another
  * library's video is refused (400), the delivery is recorded in
@@ -10,8 +13,8 @@ import type { RequestHandler } from './$types';
  * answered 200. Bunny failures are 500s so the delivery is retried.
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
-	const { media, logger } = locals.services;
-	const log = logger.child({ requestId: locals.requestId });
+	const { media } = locals.services;
+	const log = locals.log;
 
 	const body = await readJson(request, bunnyWebhookSchema);
 	if (!body.ok) {

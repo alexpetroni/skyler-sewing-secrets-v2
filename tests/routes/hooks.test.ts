@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { Handle } from '@sveltejs/kit/hooks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema } from '../../src/lib/server/db/index.ts';
-import { createHandle } from '../../src/lib/server/http/create-handle.ts';
+import { createHandle, createHandleError } from '../../src/lib/server/http/create-handle.ts';
 import { isMaintenanceExempt } from '../../src/lib/server/http/maintenance.ts';
 import { useTestDb } from '../helpers/db.ts';
 import { fakeEvent, runHandle, type FakeEvent } from '../helpers/event.ts';
@@ -119,6 +119,61 @@ describe('createHandle', () => {
 		expect(result.headers.get('X-Frame-Options')).toBe('DENY');
 		expect(result.headers.get('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
 	}
+
+	describe('x-request-id', () => {
+		it('is on a normal response and matches locals.requestId', async () => {
+			const result = await call({ path: '/' });
+
+			expect(result.status).toBe(200);
+			expect(result.headers.get('x-request-id')).toBe(result.event.locals.requestId);
+			expect(result.headers.get('x-request-id')).toMatch(/^[0-9a-f-]{36}$/);
+		});
+
+		it('is on a redirect response', async () => {
+			const result = await call({ path: '/admin' });
+
+			expect(result.status).toBe(303);
+			expect(result.headers.get('x-request-id')).toBe(result.event.locals.requestId);
+		});
+
+		it('is on an error response', async () => {
+			const result = await call({ method: 'POST', path: '/admin/x' });
+
+			expect(result.status).toBe(401);
+			expect(result.headers.get('x-request-id')).toBe(result.event.locals.requestId);
+		});
+
+		it('differs between requests', async () => {
+			const first = await call({ path: '/' });
+			const second = await call({ path: '/' });
+
+			expect(first.headers.get('x-request-id')).not.toBe(second.headers.get('x-request-id'));
+		});
+
+		it('is the errorId handleError hands to the error page, and is logged', async () => {
+			const event = fakeEvent({ url: '/boom', locals: { requestId: 'req-42' } });
+			const onError = createHandleError({ getServices: async () => services });
+
+			const result = await onError({
+				kind: 'unknown',
+				error: new Error('kaboom'),
+				event
+			});
+
+			expect(result).toMatchObject({ errorId: 'req-42' });
+			const entry = services.logEntries.find((e) => e.message === 'unhandled request error');
+			expect(entry?.fields.requestId).toBe('req-42');
+		});
+
+		it('binds the id into the per-request logger', async () => {
+			const result = await call({ path: '/' });
+
+			result.event.locals.log.info('probe');
+
+			const entry = services.logEntries.find((e) => e.message === 'probe');
+			expect(entry?.fields?.requestId).toBe(result.event.locals.requestId);
+		});
+	});
 
 	describe('Content Security Policy', () => {
 		it('keeps the CSP header SvelteKit set on the page response', async () => {

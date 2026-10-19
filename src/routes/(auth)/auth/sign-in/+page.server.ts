@@ -25,15 +25,14 @@ function isTwoFactorRedirect(result: unknown): boolean {
 }
 
 export const load: PageServerLoad = async ({ locals, url, request }) => {
-	const { auth, logger } = locals.services;
+	const { auth } = locals.services;
 
 	// A session without a profile is stale: sign it out to clear the cookies.
 	if (locals.user && !locals.profile) {
 		try {
 			await auth.api.signOut({ headers: request.headers });
 		} catch (err) {
-			logger.warn('failed to clear stale session', {
-				requestId: locals.requestId,
+			locals.log.warn('failed to clear stale session', {
 				error: err instanceof Error ? err.message : String(err)
 			});
 		}
