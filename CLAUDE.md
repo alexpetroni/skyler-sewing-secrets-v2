@@ -5,23 +5,25 @@ bundles and standalone videos, bought through a cart and Stripe Checkout. Existi
 their logins and everything they own. The look, copy and pages are kept; the architecture is new.
 
 The previous site is vendored read-only under `legacy/` (never imported, never edited, excluded
-from all tooling). Analysis lives in `docs/analysis/`; the phase plan in `docs/phase-runner/`.
+from all tooling). The system as built is described in `docs/ARCHITECTURE.md`; the analysis that
+decided it in `docs/analysis/`; operations, backfill and launch in `docs/runbooks/`.
 
-## Stack (fixed; add nothing else unless a phase names it)
+## Stack (fixed; add nothing else without agreeing it first)
 
-| Layer      | Packages                                                                                |
-| ---------- | --------------------------------------------------------------------------------------- |
-| Framework  | `@sveltejs/kit` 3, `svelte` ≥ 5.57, `vite` 8, `@sveltejs/vite-plugin-svelte` 7, TS 6    |
-| Deployment | `@sveltejs/adapter-vercel` 7, `runtime: 'nodejs24.x'`, no edge                          |
-| Styling    | `tailwindcss` 4 via `@tailwindcss/vite`, forms + typography plugins, fontsource fonts   |
-| Database   | `drizzle-orm`, `drizzle-kit`, `@neondatabase/serverless` (prod), `@electric-sql/pglite` |
-| Auth       | `better-auth` ≥ 1.7 (drizzleAdapter, sveltekitCookies, twoFactor), `bcryptjs`           |
-| Payments   | `stripe` ≥ 23: Checkout Sessions, webhooks, refunds                                     |
-| Validation | `valibot`, `sveltekit-superforms`                                                       |
-| Content    | `marked`, `sanitize-html` (sanitised at save time)                                      |
-| Uploads    | `tus-js-client` → Bunny Stream                                                          |
-| Tests      | `vitest`, `@playwright/test` (written, not run locally)                                 |
-| Tooling    | eslint, prettier (+svelte, +tailwindcss plugins), tsx; npm                              |
+| Layer      | Packages                                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------- |
+| Framework  | `@sveltejs/kit` 3, `svelte` ≥ 5.57, `vite` 8, `@sveltejs/vite-plugin-svelte` 7, TS 6              |
+| Deployment | `@sveltejs/adapter-vercel` 7, `runtime: 'nodejs24.x'`, no edge                                    |
+| Styling    | `tailwindcss` 4 via `@tailwindcss/vite`, forms + typography plugins, fontsource fonts             |
+| Database   | `drizzle-orm`, `drizzle-kit`, `@neondatabase/serverless` (prod), `@electric-sql/pglite`           |
+| Auth       | `better-auth` ≥ 1.7 (drizzleAdapter, sveltekitCookies, twoFactor, emailOTP), `bcryptjs`, `qrcode` |
+| Payments   | `stripe` ≥ 23: Checkout Sessions, webhooks, refunds                                               |
+| Validation | `valibot`, `sveltekit-superforms`                                                                 |
+| Content    | `marked`, `sanitize-html` (sanitised at save time)                                                |
+| Uploads    | `tus-js-client` → Bunny Stream                                                                    |
+| Errors     | `@sentry/sveltekit` (off unless `SENTRY_DSN` / `PUBLIC_SENTRY_DSN` is set)                        |
+| Tests      | `vitest`; `@playwright/test` in `tests/e2e/`, run against a deployed preview                      |
+| Tooling    | eslint, prettier (+svelte, +tailwindcss plugins), tsx; npm                                        |
 
 ## Verification (the gate, from the project root)
 
@@ -32,10 +34,16 @@ npm run build     # must pass with NO env vars: env -i PATH="$PATH" HOME="$HOME"
 npm test          # vitest run: unit + PGlite-backed tests, nothing skipped
 ```
 
-Tests sit next to the module (`*.test.ts`) or under `tests/`. `createTestDb()` gives a fresh
+Tests sit next to the module (`*.test.ts`) or under `tests/`. `tests/e2e/` (Playwright) is not
+part of `npm test`: `npx playwright test --list` must parse it, and it runs only against a preview
+deployment (CI job `e2e`, behind the `E2E_ENABLED` repository variable). `createTestDb()` gives a fresh
 PGlite database with all migrations applied. Platform fakes replace Stripe/Bunny/Resend; no test
 performs network I/O. `vi.mock` only for `$app/env/*` and `$app/server`, never the module under
-test. No `.skip`, `.only`, `.todo`, no vacuous assertions.
+test. No `.skip`, `.only`, `.todo`, no vacuous assertions; the one exception is a conditional
+`test.skip(condition, reason)` in `tests/e2e/`.
+
+Local data: `DATABASE_DRIVER=pglite DATABASE_URL=pglite://./.pglite npm run db:seed` (migrates,
+then seeds idempotently via `scripts/seed-dev.ts`). Legacy → v2 data: `npm run backfill`.
 
 ## SvelteKit 3 facts
 
@@ -71,9 +79,11 @@ tests/ drizzle/ scripts/ legacy/
 
 1. Routes are thin: parse with a shared schema, check access, call one service from
    `event.locals.services`, map to `fail()`/`redirect()`/data. No drizzle or business rules in routes.
-2. Services are factories with explicit deps (`createCatalogService({ db, log })`). Modules import
-   each other only via `index.ts`. `commerce → catalog, entitlements, auth`; `entitlements →
-catalog`; `admin → everything`; only routes, webhooks and `admin` import `commerce`.
+2. Services are factories with explicit deps (`createCatalogService({ db, content, log })`).
+   Modules import each other only via `index.ts`. `commerce → catalog, entitlements, auth,
+marketing` (email templates); `catalog → content`; `marketing → content`; `admin →
+everything`; only routes, webhooks and `admin` import `commerce`. Scripts import a module's
+   `service.ts` directly when its `index.ts` pulls in `$app/*` (the auth index does).
 3. Env is read in one place (`src/lib/server/runtime/env.ts`); nothing reads `process.env`.
 4. Platform adapters are interfaces (`PaymentGateway`, `VideoHost`, `Mailer`, `Logger`) with a
    real implementation and an in-memory fake. Services depend on the interface.

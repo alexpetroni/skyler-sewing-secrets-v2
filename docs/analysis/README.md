@@ -8,6 +8,12 @@ checkout, lesson page) and scanned for `{@html}` and client-side calls. `npm run
 and `npm audit` were run on the branch.
 This directory is the future home of the v2 code; nothing has been scaffolded yet.
 
+**Status (2026-10-19):** v2 is built in this directory by the 22-phase plan in
+`docs/phase-runner/README.md`; the checks only a human can do (Neon, Stripe, Bunny, browsers) are
+listed there under “What only a human can verify after the batch”. The system as built is
+described in `docs/ARCHITECTURE.md`; the remaining launch work is in `docs/runbooks/backfill.md`
+and `docs/runbooks/launch.md`. The analysis below is kept as written.
+
 ## Decisions taken with the owner (2026-10-18)
 
 | Question | Decision |
