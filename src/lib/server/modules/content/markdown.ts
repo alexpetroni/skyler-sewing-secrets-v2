@@ -45,6 +45,17 @@ export const ALLOWED_IMAGE_SCHEMES: readonly string[] = ['https'];
 
 const SAFE_REL = 'noopener noreferrer';
 
+/**
+ * Presentational tags the legacy editor produced, mapped onto their allowed
+ * equivalents before the allow-list runs, so formatting survives sanitising.
+ * `h1` becomes `h2` because the page already has its one `h1`.
+ */
+export const TAG_REPLACEMENTS: Readonly<Record<string, string>> = {
+	b: 'strong',
+	i: 'em',
+	h1: 'h2'
+};
+
 const markdown = new Marked({ gfm: true, async: false });
 
 const sanitizeOptions: sanitizeHtml.IOptions = {
@@ -58,6 +69,12 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
 	allowProtocolRelative: false,
 	disallowedTagsMode: 'discard',
 	transformTags: {
+		...Object.fromEntries(
+			Object.entries(TAG_REPLACEMENTS).map(([from, to]) => [
+				from,
+				sanitizeHtml.simpleTransform(to, {})
+			])
+		),
 		a: (tagName, attribs) =>
 			attribs.target === '_blank'
 				? { tagName, attribs: { ...attribs, rel: SAFE_REL } }
@@ -65,7 +82,16 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
 	}
 };
 
-export function renderMarkdown(md: string): string {
-	const html = markdown.parse(md, { async: false });
+/**
+ * Sanitises HTML that is already HTML (the legacy editor's article bodies)
+ * against the same allow-list as `renderMarkdown`, without the Markdown pass:
+ * a Markdown pass would read indented lines as code blocks and drop the
+ * presentational tags the old editor used.
+ */
+export function sanitiseHtml(html: string): string {
 	return sanitizeHtml(html, sanitizeOptions);
+}
+
+export function renderMarkdown(md: string): string {
+	return sanitiseHtml(markdown.parse(md, { async: false }));
 }

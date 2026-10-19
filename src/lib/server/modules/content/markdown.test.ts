@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ALLOWED_ATTRIBUTES, ALLOWED_TAGS, renderMarkdown } from './markdown.ts';
+import {
+	ALLOWED_ATTRIBUTES,
+	ALLOWED_TAGS,
+	renderMarkdown,
+	sanitiseHtml,
+	TAG_REPLACEMENTS
+} from './markdown.ts';
 
 describe('renderMarkdown', () => {
 	it('keeps headings, lists, emphasis, code and links', () => {
@@ -112,6 +118,53 @@ describe('renderMarkdown', () => {
 		const html = renderMarkdown('[Email us](mailto:hello@example.com)');
 
 		expect(html).toBe('<p><a href="mailto:hello@example.com">Email us</a></p>\n');
+	});
+
+	it('maps raw <b>, <i> and <h1> in Markdown onto the allowed tags', () => {
+		expect(renderMarkdown('<b>bold</b> and <i>italic</i>')).toBe(
+			'<p><strong>bold</strong> and <em>italic</em></p>\n'
+		);
+		expect(renderMarkdown('<h1>Top</h1>')).toBe('<h2>Top</h2>');
+	});
+});
+
+describe('sanitiseHtml', () => {
+	it('keeps legacy editor formatting by mapping b, i and h1 onto allowed tags', () => {
+		const html = sanitiseHtml(
+			'<h1>Pressing</h1><p><b>Steam</b> and <i>patience</i>, <u>always</u>.</p>'
+		);
+
+		expect(html).toBe(
+			'<h2>Pressing</h2><p><strong>Steam</strong> and <em>patience</em>, always.</p>'
+		);
+		expect(TAG_REPLACEMENTS).toEqual({ b: 'strong', i: 'em', h1: 'h2' });
+	});
+
+	it('leaves text alone where the Markdown pass would see code blocks and emphasis', () => {
+		const legacy = '<p>Intro</p>\n\n    Indented note\n\n*stars stay*';
+
+		expect(sanitiseHtml(legacy)).toBe(legacy);
+		const rendered = renderMarkdown(legacy);
+		expect(rendered).toContain('<pre><code>Indented note');
+		expect(rendered).toContain('<em>stars stay</em>');
+	});
+
+	it('drops scripts, handlers, styles and unknown wrappers but keeps their text', () => {
+		const html = sanitiseHtml(
+			'<div class="x"><span style="color:red" onclick="steal()">Text</span></div><script>steal()</script><p style="x">Para</p>'
+		);
+
+		expect(html).toBe('Text<p>Para</p>');
+	});
+
+	it('applies the link and image rules of renderMarkdown', () => {
+		expect(sanitiseHtml('<a href="javascript:alert(1)" target="_blank">x</a>')).toBe(
+			'<a target="_blank" rel="noopener noreferrer">x</a>'
+		);
+		expect(sanitiseHtml('<img src="http://example.com/a.png" alt="a">')).toBe('<img alt="a" />');
+		expect(sanitiseHtml('<img src="https://example.com/a.png" alt="a">')).toBe(
+			'<img src="https://example.com/a.png" alt="a" />'
+		);
 	});
 });
 

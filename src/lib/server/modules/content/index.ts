@@ -1,4 +1,10 @@
-export { renderMarkdown, ALLOWED_ATTRIBUTES, ALLOWED_TAGS } from './markdown.ts';
+export {
+	renderMarkdown,
+	sanitiseHtml,
+	ALLOWED_ATTRIBUTES,
+	ALLOWED_TAGS,
+	TAG_REPLACEMENTS
+} from './markdown.ts';
 export {
 	createContentService,
 	HOME_PREVIEW_LESSON_KEY,
