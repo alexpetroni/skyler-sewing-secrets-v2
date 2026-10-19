@@ -70,6 +70,9 @@ export async function createDb(options: CreateDbOptions): Promise<Db> {
 		]);
 		const dataDir = options.url.slice(PGLITE_SCHEME.length);
 		const client = dataDir === 'memory' ? new PGlite() : new PGlite(dataDir);
+		// PGlite starts in the host's timezone; Neon sessions are UTC. Pin it so
+		// `timestamptz` strings look the same locally as in production.
+		await client.exec("SET TIME ZONE 'UTC'");
 		return drizzle(client, { schema });
 	}
 

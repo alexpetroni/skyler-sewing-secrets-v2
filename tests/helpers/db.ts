@@ -24,6 +24,10 @@ export interface TestDb {
  */
 export async function createTestDb(): Promise<TestDb> {
 	const client = new PGlite();
+	// PGlite takes the host's timezone, so `timestamptz` columns read back as
+	// `+02` on a Paris laptop and `+00` in CI. Neon sessions are UTC; match it so
+	// the suite's string timestamps are the same everywhere.
+	await client.exec("SET TIME ZONE 'UTC'");
 	const db = drizzle(client, { schema });
 	await migrate(db, { migrationsFolder: './drizzle' });
 
