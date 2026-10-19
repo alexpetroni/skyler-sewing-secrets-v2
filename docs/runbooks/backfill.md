@@ -28,6 +28,8 @@ export DATABASE_DRIVER=neon
 
 Run the commands in this exact order. Each step first runs with `--dry-run` (inside a transaction
 that is rolled back, printing the counts it would apply); read the counts, then run it for real.
+Every step, single or `all`, runs in one transaction: a step that fails half-way writes nothing, so
+it can simply be run again.
 
 ```sh
 npm run db:migrate                                   # applies drizzle/0002+ (additive)

@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import { renderMarkdown } from '../../modules/content/index.ts';
+import { sanitiseHtml } from '../../modules/content/index.ts';
 import type { Db } from '../index.ts';
 import { lessons, media_assets } from '../schema/index.ts';
 
@@ -26,10 +26,11 @@ interface PendingAsset {
  * Creates one `media_assets` row (status `ready`) per distinct Bunny video
  * referenced by `lessons.video_url`, links every such lesson through
  * `media_asset_id`, and converts legacy article lessons to `kind = 'article'`
- * with `content_html` rendered from the legacy `content` HTML by
- * `renderMarkdown` (HTML passes through Markdown and is then sanitised, so
- * `content_html` only ever holds sanitiser output) and `content_md = NULL`. Every statement only touches rows that still need the
- * change, so a second run reports zeros.
+ * with `content_html` holding the legacy `content` HTML passed through
+ * `sanitiseHtml` (the content module's allow-list, with the old editor's
+ * `<b>`, `<i>` and `<h1>` mapped to allowed tags; no Markdown pass, which
+ * would read indented lines as code) and `content_md = NULL`. Every statement
+ * only touches rows that still need the change, so a second run reports zeros.
  */
 export async function backfillMediaAssets(db: Db): Promise<MediaAssetCounts> {
 	const videoLessons = await db
@@ -102,7 +103,7 @@ export async function backfillMediaAssets(db: Db): Promise<MediaAssetCounts> {
 			.set({
 				kind: 'article',
 				content_md: null,
-				content_html: renderMarkdown(article.content ?? '')
+				content_html: sanitiseHtml(article.content ?? '')
 			})
 			.where(eq(lessons.id, article.id));
 	}

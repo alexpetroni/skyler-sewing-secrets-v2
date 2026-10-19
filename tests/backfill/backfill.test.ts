@@ -2,9 +2,11 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { schema, type Db } from '../../src/lib/server/db/index.ts';
 import {
+	BACKFILL_STEPS,
 	FLAGSHIP_SLUG,
 	FLAGSHIP_TITLE,
 	runAll,
+	runStep,
 	type BackfillResult
 } from '../../src/lib/server/db/backfill/index.ts';
 import { useTestDb } from '../helpers/db.ts';
@@ -170,8 +172,11 @@ async function seedLegacy(db: Db): Promise<Seed> {
 				title: 'Reading',
 				slug: 'reading',
 				lesson_type: 'article',
-				// Legacy admin HTML is sanitised on the way into content_html.
-				content: '<p onclick="steal()">Pressing matters.</p><script>steal()</script>',
+				// Legacy admin HTML is sanitised on the way into content_html: handlers
+				// and scripts go, the old editor's <h1>/<b>/<i> become allowed tags,
+				// and indentation is not read as Markdown code.
+				content:
+					'<h1>Pressing</h1><p onclick="steal()"><b>Pressing</b> matters.</p>\n    <i>Indented aside.</i><script>steal()</script>',
 				order_index: 3
 			},
 			{
@@ -227,6 +232,31 @@ async function tableCounts(db: Db): Promise<Record<string, number>> {
 		counts[name] = row?.n ?? -1;
 	}
 	return counts;
+}
+
+/**
+ * `db` whose `insert(table)` throws, inside transactions too, to simulate a
+ * connection lost half-way through a step.
+ */
+function failingOn(db: Db, table: unknown): Db {
+	const wrap = <T extends object>(target: T): T =>
+		new Proxy(target, {
+			get(obj, prop) {
+				if (prop === 'insert') {
+					return (into: unknown) => {
+						if (into === table) throw new Error('simulated failure');
+						return (obj as unknown as Db).insert(into as never);
+					};
+				}
+				if (prop === 'transaction') {
+					return (fn: (tx: unknown) => Promise<unknown>) =>
+						(obj as unknown as Db).transaction((tx) => fn(wrap(tx)));
+				}
+				const value: unknown = Reflect.get(obj, prop);
+				return typeof value === 'function' ? value.bind(obj) : value;
+			}
+		});
+	return wrap(db);
 }
 
 const FIRST_RUN_COUNTS: Required<Omit<BackfillResult, 'flagship-product'>> = {
@@ -380,8 +410,10 @@ describe('backfill runAll on legacy-shaped data', () => {
 			media_asset_id: null,
 			kind: 'article',
 			content_md: null,
-			content_html: '<p>Pressing matters.</p>',
-			content: '<p onclick="steal()">Pressing matters.</p><script>steal()</script>'
+			content_html:
+				'<h2>Pressing</h2><p><strong>Pressing</strong> matters.</p>\n    <em>Indented aside.</em>',
+			content:
+				'<h1>Pressing</h1><p onclick="steal()"><b>Pressing</b> matters.</p>\n    <i>Indented aside.</i><script>steal()</script>'
 		});
 		expect(lessonRows.filter((l) => l.kind === 'video')).toHaveLength(6);
 		// Legacy video_url is kept for the old app.
@@ -454,5 +486,44 @@ describe('backfill runAll on legacy-shaped data', () => {
 		});
 		const [promo] = await db().select().from(promo_codes).where(eq(promo_codes.id, seed.promoId));
 		expect(promo!.starts_at).toBeNull();
+	});
+});
+
+describe('backfill runStep', () => {
+	const { db } = useTestDb();
+
+	it('runs the steps one at a time with the same result as runAll', async () => {
+		await seedLegacy(db());
+		const result: BackfillResult = {};
+		for (const step of BACKFILL_STEPS) Object.assign(result, await runStep(db(), step));
+
+		expect(result).toMatchObject(FIRST_RUN_COUNTS);
+		expect(result['flagship-product']?.products_inserted).toBe(1);
+		expect(await tableCounts(db())).toMatchObject({
+			products: 1,
+			orders: 3,
+			order_items: 3,
+			promo_redemptions: 1,
+			entitlements: 2
+		});
+	});
+
+	it('runs a step in one transaction: a failure half-way leaves no partial rows', async () => {
+		await seedLegacy(db());
+		await runStep(db(), 'promo-codes');
+		await runStep(db(), 'flagship-product');
+
+		// The paid order and its item go in, then the promo order's redemption fails.
+		await expect(runStep(failingOn(db(), promo_redemptions), 'orders')).rejects.toThrow(
+			'simulated failure'
+		);
+		expect(await tableCounts(db())).toMatchObject({
+			orders: 0,
+			order_items: 0,
+			promo_redemptions: 0
+		});
+
+		// Nothing was left behind for `onConflictDoNothing` to skip: the retry migrates every payment.
+		expect(await runStep(db(), 'orders')).toEqual({ orders: FIRST_RUN_COUNTS.orders });
 	});
 });

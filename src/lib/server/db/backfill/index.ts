@@ -41,20 +41,27 @@ export interface BackfillResult {
 	entitlements?: EntitlementCounts;
 }
 
-/** Runs one step. Steps after `flagship-product` throw when the product is missing. */
-export async function runStep(db: Db, step: BackfillStep): Promise<BackfillResult> {
-	switch (step) {
-		case 'promo-codes':
-			return { 'promo-codes': await backfillPromoCodes(db) };
-		case 'media-assets':
-			return { 'media-assets': await backfillMediaAssets(db) };
-		case 'flagship-product':
-			return { 'flagship-product': await backfillFlagshipProduct(db) };
-		case 'orders':
-			return { orders: await backfillOrders(db) };
-		case 'entitlements':
-			return { entitlements: await backfillEntitlements(db) };
-	}
+/**
+ * Runs one step inside its own transaction, so a failure half-way (a lost
+ * connection after an `orders` row but before its `order_items`) leaves
+ * nothing behind for the next run to skip over. Steps after
+ * `flagship-product` throw when the product is missing.
+ */
+export function runStep(db: Db, step: BackfillStep): Promise<BackfillResult> {
+	return withTx(db, async (tx) => {
+		switch (step) {
+			case 'promo-codes':
+				return { 'promo-codes': await backfillPromoCodes(tx) };
+			case 'media-assets':
+				return { 'media-assets': await backfillMediaAssets(tx) };
+			case 'flagship-product':
+				return { 'flagship-product': await backfillFlagshipProduct(tx) };
+			case 'orders':
+				return { orders: await backfillOrders(tx) };
+			case 'entitlements':
+				return { entitlements: await backfillEntitlements(tx) };
+		}
+	});
 }
 
 /**
