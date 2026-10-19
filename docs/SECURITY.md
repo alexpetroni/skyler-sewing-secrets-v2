@@ -79,6 +79,15 @@ after ten minutes.
 - Sign-in for two-factor accounts stops at `/auth/two-factor` (Better Auth's two-factor cookie,
   ten minutes) and completes with a TOTP or a backup code; the redirect targets are the sign-in
   page's.
+- Google sign-in and the emailed claim code never start an admin session. Better Auth's
+  two-factor plugin challenges only the password sign-in, so for a profile with `is_admin` a
+  session created by `/callback/:id` or `/sign-in/social` (id-token variant) is refused in the
+  `session.create` database hook (`ADMIN_REFUSED_SIGN_IN_PATHS` in `create-auth.ts`), and
+  `/sign-in/email-otp` is refused in a request hook before the code is consumed (Better Auth
+  would otherwise drop an unverified account's password first). The OAuth callback then lands
+  on the sign-in page with `?error=admin_password_required` and a message. Admin accounts
+  therefore need a password; one created by Google sign-in sets it through the password-reset
+  email (Better Auth creates the credential row on reset).
 
 ## Downloads and uploads (M7)
 

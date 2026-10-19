@@ -1,6 +1,7 @@
 <script lang="ts">
 	/* eslint-disable svelte/no-navigation-without-resolve -- links are root-relative with no base path */
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
 	import AuthShell from '#lib/components/auth/AuthShell.svelte';
 	import OAuthButtons from '#lib/components/auth/OAuthButtons.svelte';
 	import { Alert, Input } from '#lib/components/ui/index.ts';
@@ -8,6 +9,11 @@
 
 	let { data, form }: PageProps = $props();
 	let loading = $state(false);
+	// A failed Google sign-in lands here with `?error=`: Better Auth appends
+	// its code to the `oauth_failed` /auth/oauth sends, so every value is read.
+	// `admin_password_required` is ADMIN_PASSWORD_REQUIRED_ERROR in create-auth.ts.
+	let oauthErrors = $derived(page.url.searchParams.getAll('error'));
+	let adminRefused = $derived(oauthErrors.includes('admin_password_required'));
 </script>
 
 <svelte:head>
@@ -23,6 +29,20 @@
 </svelte:head>
 
 <AuthShell title="Welcome back" lede="Sign in to pick up where you left off.">
+	{#if adminRefused}
+		<div class="mb-6">
+			<Alert variant="error">
+				Admin accounts sign in with their email, password and authenticator code; Google sign-in is
+				not available for them.
+			</Alert>
+		</div>
+	{:else if oauthErrors.length > 0}
+		<div class="mb-6">
+			<Alert variant="error">
+				Google sign-in didn't complete. Please try again or sign in with your password.
+			</Alert>
+		</div>
+	{/if}
 	{#if form?.error}
 		<div class="mb-6">
 			<Alert variant="error">{form.error}</Alert>

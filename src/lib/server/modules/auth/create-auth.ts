@@ -2,6 +2,8 @@ import { getRequestEvent } from '$app/server';
 import bcrypt from 'bcryptjs';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
+import { eq, sql, type SQL } from 'drizzle-orm';
 import { emailOTP, twoFactor } from 'better-auth/plugins';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { schema, type Db } from '#lib/server/db/index.ts';
@@ -25,8 +27,50 @@ const BCRYPT_COST = 10;
 /** The account label authenticator apps show for admin TOTP secrets. */
 export const TOTP_ISSUER = "Skyler's Sewing Secrets";
 
+/**
+ * Better Auth's Google endpoints create a session without the password sign-in
+ * the two-factor plugin intercepts: the redirect callback and the id-token
+ * variant of `/sign-in/social`. An admin may not start a session through them
+ * (nor through the emailed claim code, refused in `hooks.before`), otherwise
+ * the TOTP requirement would be a formality for anyone holding their Google
+ * account or mailbox.
+ */
+export const ADMIN_REFUSED_SIGN_IN_PATHS = ['/sign-in/social', '/callback/:id'];
+
+/** The emailed claim code; refused for admins before the code is consumed. */
+const EMAIL_OTP_SIGN_IN_PATH = '/sign-in/email-otp';
+
+/** `?error=` code the OAuth callback redirects with when an admin tried Google. */
+export const ADMIN_PASSWORD_REQUIRED_ERROR = 'admin_password_required';
+
+function adminRefusal(): APIError {
+	return new APIError('FORBIDDEN', {
+		code: ADMIN_PASSWORD_REQUIRED_ERROR,
+		message: 'Admin accounts sign in with their password and authenticator code.'
+	});
+}
+
+function emailOf(body: unknown): string | null {
+	return typeof body === 'object' &&
+		body !== null &&
+		'email' in body &&
+		typeof body.email === 'string'
+		? body.email
+		: null;
+}
+
 export function createAuth(options: CreateAuthOptions) {
 	const { db, secret, baseURL, google, sendPasswordReset, sendSignInCode } = options;
+
+	async function isAdmin(where: SQL): Promise<boolean> {
+		const [row] = await db
+			.select({ is_admin: schema.profiles.is_admin })
+			.from(schema.profiles)
+			.innerJoin(schema.users, eq(schema.users.id, schema.profiles.id))
+			.where(where)
+			.limit(1);
+		return row?.is_admin === true;
+	}
 
 	return betterAuth({
 		baseURL,
@@ -84,6 +128,18 @@ export function createAuth(options: CreateAuthOptions) {
 				'/request-password-reset': { window: 300, max: 5 }
 			}
 		},
+		hooks: {
+			// The emailed code is refused for admins before the OTP is consumed:
+			// Better Auth drops an unverified account's password on OTP sign-in,
+			// so refusing only the session (below) would come too late.
+			before: createAuthMiddleware(async (ctx) => {
+				if (ctx.path !== EMAIL_OTP_SIGN_IN_PATH) return;
+				const email = emailOf(ctx.body);
+				if (email && (await isAdmin(sql`lower(${schema.users.email}) = lower(${email})`))) {
+					throw adminRefusal();
+				}
+			})
+		},
 		databaseHooks: {
 			user: {
 				create: {
@@ -98,6 +154,19 @@ export function createAuth(options: CreateAuthOptions) {
 								avatar_url: user.image || null
 							})
 							.onConflictDoNothing();
+					}
+				}
+			},
+			session: {
+				create: {
+					// The two-factor plugin only challenges the password sign-in, so
+					// an admin's session may start there (and the gate then insists
+					// on TOTP) or from completing the challenge; Google is refused.
+					// The OAuth callback turns the error into
+					// `?error=admin_password_required` on the sign-in page.
+					before: async (session, ctx) => {
+						if (!ctx || !ADMIN_REFUSED_SIGN_IN_PATHS.includes(ctx.path)) return;
+						if (await isAdmin(eq(schema.profiles.id, session.userId))) throw adminRefusal();
 					}
 				}
 			}

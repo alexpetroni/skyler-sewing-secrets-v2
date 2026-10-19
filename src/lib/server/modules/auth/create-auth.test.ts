@@ -7,6 +7,8 @@ import {
 	type TestServices
 } from '../../../../../tests/helpers/services.ts';
 import { schema } from '#lib/server/db/index.ts';
+import { APIError } from 'better-auth/api';
+import { ADMIN_PASSWORD_REQUIRED_ERROR, ADMIN_REFUSED_SIGN_IN_PATHS } from './create-auth.ts';
 
 // The sveltekitCookies plugin asks SvelteKit for the current request event to
 // copy cookies onto it; outside a request there is none and it does nothing.
@@ -152,6 +154,58 @@ describe('createAuth on PGlite', () => {
 			full_name: 'Google User',
 			avatar_url: 'https://example.com/avatar.png',
 			is_admin: false
+		});
+	});
+
+	describe('admin sessions start only through the password sign-in', () => {
+		/** The six-digit code in the most recent claim email to `email`. */
+		function emailedCode(email: string): string {
+			const match = services.mailer.lastTo(email)?.text.match(/\b(\d{6})\b/);
+			if (!match) throw new Error(`no code emailed to ${email}`);
+			return match[1];
+		}
+
+		it('refuses the emailed code for an admin, who still signs in with the password', async () => {
+			await db().update(profiles).set({ is_admin: true }).where(eq(profiles.id, userId));
+			await services.auth.api.sendVerificationOTP({ body: { email: EMAIL, type: 'sign-in' } });
+
+			const refusal = await services.auth.api
+				.signInEmailOTP({ body: { email: EMAIL, otp: emailedCode(EMAIL) } })
+				.catch((err: unknown) => err);
+
+			expect(refusal).toBeInstanceOf(APIError);
+			expect(refusal).toMatchObject({
+				status: 'FORBIDDEN',
+				body: { code: ADMIN_PASSWORD_REQUIRED_ERROR }
+			});
+			expect(await db().select().from(sessions).where(eq(sessions.userId, userId))).toEqual([]);
+
+			// The password path is the one the two-factor plugin guards.
+			const { response } = await services.auth.api.signInEmail({
+				body: { email: EMAIL, password: PASSWORD },
+				returnHeaders: true
+			});
+			expect(response.user.id).toBe(userId);
+			expect(await db().select().from(sessions).where(eq(sessions.userId, userId))).toHaveLength(1);
+		});
+
+		it('covers both Google endpoints with the same rule', () => {
+			// Better Auth's OAuth callback is declared as "/callback/:id"; the
+			// id-token variant of sign-in creates the session in "/sign-in/social".
+			expect(ADMIN_REFUSED_SIGN_IN_PATHS).toEqual(
+				expect.arrayContaining(['/callback/:id', '/sign-in/social'])
+			);
+		});
+
+		it('lets a member sign in with the emailed code', async () => {
+			await services.auth.api.sendVerificationOTP({ body: { email: EMAIL, type: 'sign-in' } });
+
+			const result = await services.auth.api.signInEmailOTP({
+				body: { email: EMAIL, otp: emailedCode(EMAIL) }
+			});
+
+			expect(result.user.id).toBe(userId);
+			expect(await db().select().from(sessions).where(eq(sessions.userId, userId))).toHaveLength(1);
 		});
 	});
 });
