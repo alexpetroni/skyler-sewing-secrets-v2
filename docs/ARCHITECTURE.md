@@ -73,8 +73,8 @@ without `SENTRY_DSN`. `createHandle` (`src/lib/server/http/create-handle.ts`) is
    `locals.access = { isAdmin, isSuspended, allAccess }`. A suspended account is neither member
    nor admin.
 4. **maintenance gate**: while `site_settings.maintenance_mode` is on, reads redirect to `/` and
-   writes get 503, except the exempt paths in `http/maintenance.ts` (admin, auth, webhooks, health and
-   the Stripe return pages).
+   writes get 503, except the exempt paths in `http/maintenance.ts` (admin, auth, webhooks, the
+   `CRON_SECRET`-protected jobs, health and the Stripe return pages).
 5. **admin gate**: `/admin/**` needs an active admin with TOTP on; one without it is sent to
    `/admin/security?required=1`.
 
@@ -131,7 +131,8 @@ valid for six hours. Without `BUNNY_EMBED_TOKEN_KEY` playback fails closed.
    and redirects to it.
 4. **Webhook** (`/api/webhooks/stripe`): the signature is verified (400 otherwise), then
    `fulfilment.handleGatewayEvent` records the event in `webhook_events` (`ON CONFLICT DO NOTHING`;
-   a repeat is a no-op unless the earlier attempt failed). `checkout.session.completed` with
+   a repeat is a no-op unless the earlier attempt failed, or was never marked processed and is older
+   than the two-minute in-flight window, i.e. that invocation died). `checkout.session.completed` with
    `payment_status = 'paid'` and `checkout.session.async_payment_succeeded` run `fulfilOrder`: lock
    the order, check reference, amount and currency, mark it `paid`, grant one `purchase`
    entitlement per item, sync `is_member`, and after commit send the receipt (plus a welcome email
