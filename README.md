@@ -56,7 +56,9 @@ npm run dev
 The lessons point at fake Bunny videos, so the player stays empty while the signed URL is still
 built. Stop `npm run dev` before seeding: PGlite allows one process per data directory. For a
 Neon dev branch, run `npm run db:migrate` first and then `npm run db:seed` with that branch's
-`DATABASE_URL`.
+`DATABASE_URL` and `SEED_DEV_CONFIRM` set to the branch's hostname: the seed refuses a remote
+database without it, and refuses any database that already holds an account other than the two
+seed accounts, so the published admin password can never land in production.
 
 Other scripts: `npm run backfill` (legacy → v2 rows, see `docs/runbooks/backfill.md`),
 `npm run check-env` (compares `.env.example` with `src/env.ts`), `npm run db:generate` (new

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
+	checkSeedTarget,
 	SEED_ADMIN_EMAIL,
 	SEED_MEMBER_EMAIL,
 	SEED_PASSWORD,
@@ -113,5 +114,41 @@ describe('scripts/seed-dev.ts', () => {
 		expect(
 			rows.promos.map((p) => [p.code, p.discount_type, p.discount_value, p.is_active])
 		).toEqual([[SEED_PROMO_CODE, 'percentage', 10, true]]);
+	});
+
+	it('refuses a database that already holds an account that is not a seed account', async () => {
+		await db()
+			.insert(users)
+			.values({ id: crypto.randomUUID(), email: 'owner@example.com', emailVerified: true });
+
+		await expect(seedDev(db(), createFakeLogger())).rejects.toThrow(
+			/Refusing to seed: the database already holds 1 account/
+		);
+		expect(await db().select().from(products)).toEqual([]);
+		expect((await db().select().from(users)).map((u) => u.email)).toEqual(['owner@example.com']);
+	});
+
+	it('checkSeedTarget lets PGlite through and needs the Neon host repeated in SEED_DEV_CONFIRM', () => {
+		const neon = 'postgresql://user:pw@ep-calm-sea-123456.eu-central-1.aws.neon.tech/neondb';
+
+		expect(
+			checkSeedTarget({ url: 'pglite://./.pglite', driver: 'pglite', confirm: undefined })
+		).toBeNull();
+		expect(checkSeedTarget({ url: neon, driver: 'neon', confirm: undefined })).toMatch(
+			/Refusing to seed a remote database.*SEED_DEV_CONFIRM=ep-calm-sea-123456\.eu-central-1\.aws\.neon\.tech/
+		);
+		expect(checkSeedTarget({ url: neon, driver: 'neon', confirm: 'ep-other.neon.tech' })).toMatch(
+			/does not match/
+		);
+		expect(
+			checkSeedTarget({
+				url: neon,
+				driver: 'neon',
+				confirm: 'ep-calm-sea-123456.eu-central-1.aws.neon.tech'
+			})
+		).toBeNull();
+		expect(checkSeedTarget({ url: 'not a url', driver: 'neon', confirm: 'x' })).toMatch(
+			/valid URL/
+		);
 	});
 });

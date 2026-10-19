@@ -3,9 +3,13 @@
 // only created when missing, so running it again changes nothing.
 //
 //   DATABASE_DRIVER=pglite DATABASE_URL=pglite://./.pglite npm run db:seed
-//   DATABASE_URL=postgresql://…dev-branch… npm run db:migrate && npm run db:seed
+//   DATABASE_URL=postgresql://…dev-branch… npm run db:migrate
+//   SEED_DEV_CONFIRM=<that branch's host> DATABASE_URL=… npm run db:seed
 //
-// On PGlite it applies the migrations under drizzle/ first.
+// On PGlite it applies the migrations under drizzle/ first. Two guards keep the
+// known-password admin out of a real database: a Neon URL is refused unless
+// SEED_DEV_CONFIRM repeats its hostname, and any database that already holds
+// an account other than the two seed accounts is refused outright.
 //
 // Creates, all signing in with SEED_PASSWORD:
 //   admin@sewing.local   admin, two-factor off (the admin area asks to turn it on)
@@ -16,7 +20,7 @@
 // Reads DATABASE_URL and DATABASE_DRIVER from the environment: this is a CLI,
 // like scripts/backfill/run.ts, not application code.
 import { pathToFileURL } from 'node:url';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, isNull, notInArray } from 'drizzle-orm';
 import { createDb, schema, type Db } from '#lib/server/db/index.ts';
 // The auth index also exports createAuth, which imports `$app/server` and so
 // only loads inside SvelteKit; the account service alone runs under tsx.
@@ -33,6 +37,37 @@ export const SEED_PASSWORD = 'dev-password-123';
 export const SEED_ADMIN_EMAIL = 'admin@sewing.local';
 export const SEED_MEMBER_EMAIL = 'member@sewing.local';
 export const SEED_PROMO_CODE = 'WELCOME10';
+export const SEED_EMAILS: readonly string[] = [SEED_ADMIN_EMAIL, SEED_MEMBER_EMAIL];
+
+export interface SeedTarget {
+	url: string;
+	driver: 'neon' | 'pglite';
+	/** `SEED_DEV_CONFIRM`: must repeat the Neon host to seed a remote database. */
+	confirm: string | undefined;
+}
+
+/**
+ * Why the target must not be seeded, or null when it may be. PGlite is always
+ * local; a Neon database needs its hostname repeated in `SEED_DEV_CONFIRM`, so
+ * a production `DATABASE_URL` left over in the shell (after a backfill, say)
+ * cannot plant `admin@sewing.local` with a published password.
+ */
+export function checkSeedTarget({ url, driver, confirm }: SeedTarget): string | null {
+	if (driver === 'pglite') return null;
+	let host: string;
+	try {
+		host = new URL(url).hostname;
+	} catch {
+		return 'DATABASE_URL is not a valid URL';
+	}
+	if (!confirm) {
+		return `Refusing to seed a remote database. Set SEED_DEV_CONFIRM=${host} to seed this one.`;
+	}
+	if (confirm !== host) {
+		return `SEED_DEV_CONFIRM does not match the DATABASE_URL host (${host}); nothing seeded.`;
+	}
+	return null;
+}
 /** Not a real Bunny library: the player shows nothing, the signed URL is still built. */
 const FAKE_LIBRARY_ID = '0';
 
@@ -71,6 +106,17 @@ function productInput(
 }
 
 export async function seedDev(db: Db, log: Logger): Promise<SeedDevResult> {
+	// A database with real accounts is not a development database, whatever the URL says.
+	const [foreign] = await db
+		.select({ n: count() })
+		.from(users)
+		.where(notInArray(users.email, [...SEED_EMAILS]));
+	if (foreign && foreign.n > 0) {
+		throw new Error(
+			`Refusing to seed: the database already holds ${foreign.n} account(s) that are not seed accounts.`
+		);
+	}
+
 	const created: SeedDevResult = [];
 	const auth = createAuthService({ db });
 	const content = createContentService({ db, log });
@@ -256,10 +302,20 @@ async function main(): Promise<number> {
 		return 2;
 	}
 	const driverValue = process.env.DATABASE_DRIVER;
-	const driver = driverValue === 'neon' || driverValue === 'pglite' ? driverValue : undefined;
+	const driver =
+		driverValue === 'neon' || driverValue === 'pglite'
+			? driverValue
+			: url.startsWith('pglite://')
+				? 'pglite'
+				: 'neon';
+	const refusal = checkSeedTarget({ url, driver, confirm: process.env.SEED_DEV_CONFIRM });
+	if (refusal) {
+		console.error(refusal);
+		return 2;
+	}
 	const db = await createDb({ url, driver });
 	try {
-		if ((driver ?? (url.startsWith('pglite://') ? 'pglite' : 'neon')) === 'pglite') {
+		if (driver === 'pglite') {
 			// A local PGlite directory has no other migration path: bring it up to
 			// date first (a no-op when it already is). Neon uses `npm run db:migrate`.
 			const { migrate } = await import('drizzle-orm/pglite/migrator');

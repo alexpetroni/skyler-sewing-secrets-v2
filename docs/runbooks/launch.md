@@ -99,7 +99,9 @@ The Playwright suite under `tests/e2e/` runs against a deployed preview, never l
 production:
 
 1. Run `scripts/seed-dev.ts` against the Preview Neon branch
-   (`DATABASE_URL=… npm run db:migrate && npm run db:seed`), or use backfilled real accounts.
+   (`DATABASE_URL=… npm run db:migrate && SEED_DEV_CONFIRM=<branch host> npm run db:seed`). The
+   seed refuses a remote database without `SEED_DEV_CONFIRM`, and any database that already
+   holds real accounts; on a branch backfilled from production, use real accounts instead.
 2. Turn TOTP on for the E2E admin (Admin → Security) and keep the `secret=` from the otpauth URI.
 3. Fill `tests/e2e/.env` from `tests/e2e/.env.example` (or set the repository secrets and the
    repository variable `E2E_ENABLED=true` for the CI `e2e` job).
