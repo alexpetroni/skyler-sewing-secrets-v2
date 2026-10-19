@@ -1,5 +1,4 @@
-import { base32 } from '@better-auth/utils/base32';
-import { createOTP } from '@better-auth/utils/otp';
+import { createHmac } from 'node:crypto';
 import { expect, type Page } from '@playwright/test';
 
 // Shared helpers for the browser suite. Every variable is listed in
@@ -46,9 +45,32 @@ export function buyerEmail(): string {
 /** The password every throwaway buyer gets at checkout. */
 export const BUYER_PASSWORD = 'e2e-buyer-password';
 
-/** The code an authenticator app shows now for the base32 secret of a TOTP URI. */
-export function totpCode(secret: string): Promise<string> {
-	return createOTP(new TextDecoder().decode(base32.decode(secret))).totp();
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+/** The bytes of an RFC 4648 base32 string (the `secret=` of an otpauth URI). */
+function base32Decode(encoded: string): Buffer {
+	let bits = '';
+	for (const char of encoded.toUpperCase().replace(/=+$/, '')) {
+		const index = BASE32_ALPHABET.indexOf(char);
+		if (index < 0) throw new Error('E2E_ADMIN_TOTP_SECRET is not base32');
+		bits += index.toString(2).padStart(5, '0');
+	}
+	const bytes: number[] = [];
+	for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
+	return Buffer.from(bytes);
+}
+
+/**
+ * The code an authenticator app shows now for the base32 secret of a TOTP URI:
+ * RFC 6238 with Better Auth's defaults (HMAC-SHA1, 30-second steps, 6 digits).
+ */
+export function totpCode(secret: string): string {
+	const counter = Buffer.alloc(8);
+	counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+	const digest = createHmac('sha1', base32Decode(secret)).update(counter).digest();
+	const offset = digest[digest.length - 1] & 0xf;
+	const code = (digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000;
+	return String(code).padStart(6, '0');
 }
 
 /** Signs in with email and password and waits until the sign-in page is left. */
@@ -64,7 +86,7 @@ export async function login(page: Page, email: string, password: string): Promis
 export async function loginAdmin(page: Page, totpSecret: string): Promise<void> {
 	await login(page, requireEnv('E2E_ADMIN_EMAIL'), requireEnv('E2E_ADMIN_PASSWORD'));
 	await expect(page).toHaveURL(/\/auth\/two-factor/);
-	await page.getByLabel('Authentication code').fill(await totpCode(totpSecret));
+	await page.getByLabel('Authentication code').fill(totpCode(totpSecret));
 	await page.getByRole('button', { name: 'Continue', exact: true }).click();
 	await expect(page).toHaveURL(/\/admin(\/|$)/);
 }
