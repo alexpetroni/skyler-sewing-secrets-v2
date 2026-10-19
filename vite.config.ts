@@ -12,7 +12,15 @@ export default defineConfig(({ mode }) => {
 	// at build time from the variable src/env.ts declares; `https://*.b-cdn.net`
 	// already covers every Bunny pull zone, so the build needs no environment.
 	const { PUBLIC_BUNNY_CDN_URL } = loadEnv(mode, process.cwd(), 'PUBLIC_BUNNY_CDN_URL');
-	const imgSrc: ImgSrc = ['self', 'data:', 'blob:', 'https://*.b-cdn.net'];
+	// Google sign-in stores the account picture (lh3.googleusercontent.com and
+	// siblings) in avatar_url, so the Avatar component needs that host too.
+	const imgSrc: ImgSrc = [
+		'self',
+		'data:',
+		'blob:',
+		'https://*.b-cdn.net',
+		'https://*.googleusercontent.com'
+	];
 	// `new URL` has validated the host; the template-literal Source type cannot see that.
 	if (PUBLIC_BUNNY_CDN_URL)
 		imgSrc.push(`https://${new URL(PUBLIC_BUNNY_CDN_URL).host}` as ImgSrc[number]);
@@ -47,7 +55,11 @@ export default defineConfig(({ mode }) => {
 							'https://video.bunnycdn.com',
 							'https://challenges.cloudflare.com'
 						],
-						'form-action': ['self'],
+						// Chromium applies form-action to the redirects that follow a
+						// submission: the plain Google sign-in form is answered with a
+						// 303 to accounts.google.com, and the no-JavaScript checkout
+						// with a 303 to Stripe Checkout. Both stay allowed.
+						'form-action': ['self', 'https://accounts.google.com', 'https://checkout.stripe.com'],
 						'base-uri': ['self'],
 						'object-src': ['none'],
 						'frame-ancestors': ['none'],

@@ -28,11 +28,11 @@ it emits and `src/app.html` documents that any script added there must carry
 | `default-src`               | `'self'`                                                                       |
 | `script-src`                | `'self'`, `https://challenges.cloudflare.com` (Turnstile), plus the nonce      |
 | `style-src`                 | `'self'`, `'unsafe-inline'`                                                    |
-| `img-src`                   | `'self'`, `data:`, `blob:`, `https://*.b-cdn.net`, the `PUBLIC_BUNNY_CDN_URL` host |
+| `img-src`                   | `'self'`, `data:`, `blob:`, `https://*.b-cdn.net`, the `PUBLIC_BUNNY_CDN_URL` host, `https://*.googleusercontent.com` (Google account pictures) |
 | `font-src`                  | `'self'` (fonts are self-hosted through fontsource)                            |
 | `frame-src`                 | `https://iframe.mediadelivery.net` (Bunny player), `https://challenges.cloudflare.com` |
 | `connect-src`               | `'self'`, `https://video.bunnycdn.com` (TUS uploads), `https://challenges.cloudflare.com` |
-| `form-action`               | `'self'`                                                                       |
+| `form-action`               | `'self'`, `https://accounts.google.com`, `https://checkout.stripe.com`         |
 | `base-uri`                  | `'self'`                                                                       |
 | `object-src`                | `'none'`                                                                       |
 | `frame-ancestors`           | `'none'`                                                                       |
@@ -42,7 +42,11 @@ it emits and `src/app.html` documents that any script added there must carry
 inline `style` attributes; Tailwind utilities are classes and need nothing. Scripts never get
 `'unsafe-inline'`. The `PUBLIC_BUNNY_CDN_URL` host is added at build time only (Vite's
 `loadEnv`); the wildcard already covers every Bunny pull zone, so the build needs no environment.
-PHASE-21 extends `connect-src` with the Sentry ingest host.
+`form-action` names Google and Stripe because Chromium (unlike Firefox) applies the directive to
+the redirects that follow a form submission: the Google button is a plain form that `/auth/oauth`
+answers with a 303 to `accounts.google.com`, and the no-JavaScript checkout action answers with a
+303 to Stripe Checkout. Without them Chrome refuses both navigations. PHASE-21 extends
+`connect-src` with the Sentry ingest host.
 
 ## Rate limits (H5)
 

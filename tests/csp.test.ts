@@ -29,7 +29,7 @@ describe('Content Security Policy configuration', () => {
 			'connect-src',
 			["'self'", "'https://video.bunnycdn.com'", "'https://challenges.cloudflare.com'"]
 		],
-		['form-action', ["'self'"]],
+		['form-action', ["'self'", "'https://accounts.google.com'", "'https://checkout.stripe.com'"]],
 		['base-uri', ["'self'"]],
 		['object-src', ["'none'"]],
 		['frame-ancestors', ["'none'"]]
@@ -37,9 +37,11 @@ describe('Content Security Policy configuration', () => {
 		expect(cspBlock).toContain(`'${directive}': [${sources.join(', ')}]`);
 	});
 
-	it('allows images from self, data, blob and the Bunny pull zones', () => {
+	it('allows images from self, data, blob, the Bunny pull zones and Google avatars', () => {
 		expect(cspBlock).toContain("'img-src': imgSrc");
-		expect(config).toContain("= ['self', 'data:', 'blob:', 'https://*.b-cdn.net']");
+		expect(config).toContain(
+			"= ['self', 'data:', 'blob:', 'https://*.b-cdn.net', 'https://*.googleusercontent.com']"
+		);
 		// The configured pull zone host joins the list at build time.
 		expect(config).toContain(
 			'imgSrc.push(`https://${new URL(PUBLIC_BUNNY_CDN_URL).host}` as ImgSrc[number])'
